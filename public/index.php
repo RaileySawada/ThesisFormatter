@@ -12,17 +12,19 @@ $meta = require META_CONF;
 
 use App\Controllers\FormatController;
 
-$request = trim($_SERVER['REQUEST_URI'], '/');
-$request = str_replace('ThesisFormatter', '', $request);
-$request = strtok($request, '?');
+$uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+$request = trim($uri, '/');
+$request = trim($request, 'ThesisFormatter');
+
 $page = str_replace('/', '', $request);
 $page = str_replace('_', ' ', $page);
+print_r($request);
 
 if(session_status() == PHP_SESSION_NONE) session_start();
 
 require HEADER;
 
-if(ENVIRONMENT == 'local' && DEBUG == true):
+if(ENVIRONMENT == 'production' && DEBUG == false):
   switch ($request) {
     case '':
       $login = new FormatController;

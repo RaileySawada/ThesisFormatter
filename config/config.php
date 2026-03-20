@@ -12,7 +12,7 @@ define("ENVIRONMENT", ENV["APP_ENV"]);
 define("DEBUG", ENV["APP_DEBUG"]);
 
 // Path and Url
-define("BASE_URL", ENVIRONMENT == 'local' ? "http://localhost/ThesisFormatter" : 'https://thesis-formatter.hstn.me');
+define("BASE_URL", ENVIRONMENT == 'local' ? "http://localhost/ThesisFormatter" : 'https://thesisformatter-production.up.railway.app');
 define("BASE_PATH",dirname(__DIR__)."/");
 
 if (DEBUG) {
