@@ -1,0 +1,666 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>LCBA Canteen — Standalone</title>
+    <style>
+      :root {
+        --primary: #1976d2;
+        --accent: #ffe066;
+        --danger: #dc3545;
+        --success: #28a745;
+        --card: #fff;
+        --bg: #f4f4f4;
+        --max-width: 900px;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        font-family: Arial, Helvetica, sans-serif;
+        background: var(--bg);
+        margin: 0;
+        padding: 20px;
+        color: #222;
+      }
+      .container {
+        max-width: var(--max-width);
+        margin: 12px auto;
+        background: var(--card);
+        padding: 0;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 6px 30px rgba(18, 38, 63, 0.06);
+      }
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px 18px;
+        background: linear-gradient(
+          90deg,
+          var(--accent) 60%,
+          var(--primary) 100%
+        );
+        color: #111;
+      }
+      .header h1 {
+        margin: 0;
+        font-size: 1.4rem;
+        letter-spacing: 2px;
+        text-shadow:
+          1px 1px 0 #fff,
+          2px 2px 0 var(--primary);
+      }
+      .header .actions {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+      .header .actions button {
+        padding: 8px 12px;
+        border-radius: 8px;
+        border: none;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      .header .logout {
+        background: var(--danger);
+        color: #fff;
+      }
+      .card {
+        padding: 24px;
+        background: var(--card);
+      }
+      h2 {
+        margin: 0 0 12px 0;
+        color: var(--primary);
+      }
+      .table-wrap {
+        overflow: auto;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 12px;
+      }
+      th,
+      td {
+        padding: 12px;
+        border-bottom: 1px solid #eee;
+        text-align: left;
+      }
+      th {
+        background: #f7e7b3;
+      }
+      button {
+        padding: 6px 10px;
+        border-radius: 6px;
+        border: none;
+        cursor: pointer;
+      }
+      button.primary {
+        background: var(--primary);
+        color: #fff;
+      }
+      button.danger {
+        background: var(--danger);
+        color: #fff;
+      }
+      button.success {
+        background: var(--success);
+        color: #fff;
+      }
+      input[type="text"],
+      input[type="password"],
+      input[type="number"],
+      input[type="file"],
+      select,
+      textarea {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        margin: 8px 0;
+      }
+      .form-inline {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .form-inline input {
+        flex: 1;
+      }
+      .small {
+        width: 80px;
+      }
+      .link {
+        color: var(--primary);
+        cursor: pointer;
+        text-decoration: underline;
+        font-size: 0.95rem;
+      }
+      .error {
+        color: #d00;
+        text-align: center;
+        margin-bottom: 10px;
+      }
+      .success {
+        color: var(--success);
+        text-align: center;
+        margin-bottom: 10px;
+      }
+      .menu-admin {
+        margin-top: 20px;
+      }
+      .change-pass {
+        margin-top: 28px;
+      }
+      .footer-note {
+        font-size: 13px;
+        color: #666;
+        margin-top: 12px;
+      }
+      /* Nutrition tab styles */
+      .tabs {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+      }
+      .nutrition-box {
+        border: 2px solid #111;
+        padding: 12px;
+        background: #fff;
+        max-width: 520px;
+        border-radius: 6px;
+      }
+      .nutrition-facts {
+        font-family: Arial, Helvetica, sans-serif;
+      }
+      .nutrition-facts h3 {
+        margin: 0 0 8px 0;
+        font-size: 1.1rem;
+      }
+      @media (max-width: 640px) {
+        .header h1 {
+          font-size: 1.1rem;
+        }
+        .form-inline {
+          flex-direction: column;
+          align-items: stretch;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>LCBA CANTEEN</h1>
+        <div class="actions">
+          <button id="logoutBtn" class="logout" style="display: none">
+            Logout
+          </button>
+        </div>
+      </div>
+
+      <div class="card">
+        <!-- LOGIN VIEW -->
+        <div id="loginView" style="display: none">
+          <h2>Login</h2>
+          <div id="loginError" class="error"></div>
+          <input
+            type="text"
+            id="loginUser"
+            placeholder="Username"
+            autocomplete="username"
+          />
+          <input
+            type="password"
+            id="loginPass"
+            placeholder="Password"
+            autocomplete="current-password"
+          />
+          <button
+            onclick="login()"
+            class="primary"
+            style="width: 100%; margin-top: 8px"
+          >
+            Login
+          </button>
+          <div style="text-align: center; margin-top: 10px">
+            <span class="link" onclick="showRegister()">Register</span>
+          </div>
+        </div>
+
+        <!-- REGISTER VIEW -->
+        <div id="registerView" style="display: none">
+          <h2>Register</h2>
+          <div id="registerError" class="error"></div>
+          <div id="registerSuccess" class="success"></div>
+          <input
+            type="text"
+            id="registerUser"
+            placeholder="Username"
+            autocomplete="username"
+          />
+          <input
+            type="password"
+            id="registerPass"
+            placeholder="Password"
+            autocomplete="new-password"
+          />
+          <input
+            type="text"
+            id="registerIdNum"
+            placeholder="LCBA ID Number"
+            autocomplete="off"
+          />
+          <div style="margin-bottom: 8px">
+            <label for="registerIdPhoto">Upload LCBA ID Photo:</label>
+            <input type="file" id="registerIdPhoto" accept="image/*" />
+          </div>
+          <button onclick="register()" class="success">Register</button>
+          <div class="footer-note">
+            Register as <b>admin</b> by using username <b>admin</b> or if you
+            are the first user.
+          </div>
+          <div style="text-align: center; margin-top: 8px">
+            <span class="link" onclick="showLogin()">Back to Login</span>
+          </div>
+        </div>
+
+        <!-- MENU/STOCK VIEW -->
+        <div id="menuView" style="display: none">
+          <h2>LCBA Canteen Menu & Stock</h2>
+          <div class="tabs" style="margin-top: 12px">
+            <button
+              id="tabMenuBtn"
+              class="primary"
+              onclick="toggleNutrition(false)"
+            >
+              Menu
+            </button>
+            <button
+              id="tabNutritionBtn"
+              style="margin-left: 8px"
+              onclick="toggleNutrition(true)"
+            >
+              Nutrition Facts
+            </button>
+          </div>
+          <div class="table-wrap" id="menuTableWrap">
+            <table id="menuTable">
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th>Stock</th>
+                  <th>Price</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div id="menuAdminArea" class="menu-admin"></div>
+
+          <div id="nutritionSection" style="display: none; margin-top: 18px">
+            <h2>Nutrition Facts</h2>
+            <div id="nutritionContent" class="nutrition-box">
+              Select an item to view nutrition facts.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      /* Inlined JS (authentication and menu app). This file is standalone — it uses localStorage for persistence so it works when shared. */
+
+      // View management
+      function showLogin() {
+        document.getElementById("loginView").style.display = "";
+        document.getElementById("registerView").style.display = "none";
+        document.getElementById("menuView").style.display = "none";
+        const _logout = document.getElementById("logoutBtn");
+        if (_logout) _logout.style.display = "none";
+      }
+      function showRegister() {
+        document.getElementById("loginView").style.display = "none";
+        document.getElementById("registerView").style.display = "";
+        document.getElementById("menuView").style.display = "none";
+        const _logout = document.getElementById("logoutBtn");
+        if (_logout) _logout.style.display = "none";
+      }
+      function showMenu() {
+        document.getElementById("loginView").style.display = "none";
+        document.getElementById("registerView").style.display = "none";
+        document.getElementById("menuView").style.display = "";
+        const _logout = document.getElementById("logoutBtn");
+        if (_logout) _logout.style.display = "";
+      }
+
+      // Auth logic (localStorage)
+      function login() {
+        const user = document.getElementById("loginUser").value.trim();
+        const pass = document.getElementById("loginPass").value;
+        document.getElementById("loginError").textContent = "";
+        const users = JSON.parse(localStorage.getItem("canteenUsers") || "[]");
+        const found = users.find(
+          (u) => u.username === user && u.password === pass,
+        );
+        if (found) {
+          localStorage.setItem("canteenCurrentUser", user);
+          localStorage.setItem("canteenCurrentRole", found.role || "user");
+          showMenu();
+          renderMenu();
+        } else {
+          document.getElementById("loginError").textContent =
+            "Invalid username or password.";
+        }
+      }
+
+      function register() {
+        const user = document.getElementById("registerUser").value.trim();
+        const pass = document.getElementById("registerPass").value;
+        const idNum = document.getElementById("registerIdNum").value.trim();
+        const idPhotoInput = document.getElementById("registerIdPhoto");
+        const errorDiv = document.getElementById("registerError");
+        const successDiv = document.getElementById("registerSuccess");
+        errorDiv.textContent = "";
+        successDiv.textContent = "";
+        if (!user || !pass || !idNum) {
+          errorDiv.textContent = "Please fill in all fields.";
+          return;
+        }
+        if (!idPhotoInput.files || idPhotoInput.files.length === 0) {
+          errorDiv.textContent = "Please upload a photo of your LCBA ID.";
+          return;
+        }
+        let users = JSON.parse(localStorage.getItem("canteenUsers") || "[]");
+        if (users.find((u) => u.username === user)) {
+          errorDiv.textContent = "Username already exists.";
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          let role = "user";
+          if (users.length === 0 || user.toLowerCase() === "admin")
+            role = "admin";
+          users.push({
+            username: user,
+            password: pass,
+            role,
+            idNum: idNum,
+            idPhoto: e.target.result,
+          });
+          localStorage.setItem("canteenUsers", JSON.stringify(users));
+          successDiv.textContent =
+            "Registration successful! You can now login.";
+          document.getElementById("registerUser").value = "";
+          document.getElementById("registerPass").value = "";
+          document.getElementById("registerIdNum").value = "";
+          document.getElementById("registerIdPhoto").value = "";
+        };
+        reader.readAsDataURL(idPhotoInput.files[0]);
+      }
+
+      // Menu logic
+      const defaultMenu = [
+        {
+          name: "Fries",
+          stock: 30,
+          price: 30.0,
+          nutrition: `<div class="nutrition-facts"><div style="font-weight:bold;font-size:1.25rem">Nutrition Facts</div><div style="margin-top:6px">Serving size 1 oz (28g)</div><div style="margin-top:8px;font-size:1.1rem;font-weight:bold">Calories 140</div><div style="margin-top:8px">Total Fat 6g (8%)</div><div>Saturated Fat 2.5g</div><div>Trans Fat 0g</div><div>Cholesterol 0mg</div><div style="margin-top:6px">Sodium 290mg (13%)</div><div>Total Carbohydrate 19g (7%)</div><div>Dietary Fiber &lt;1g</div><div>Total Sugars 1g</div><div style="margin-top:6px">Protein 2g</div></div>`,
+        },
+        { name: "Siopao", stock: 25, price: 35.0 },
+        { name: "Fruit Soda", stock: 40, price: 25.0 },
+        { name: "Water", stock: 100, price: 10.0 },
+        { name: "Rice", stock: 50, price: 15.0 },
+      ];
+      function loadMenu() {
+        const saved = localStorage.getItem("canteenMenu");
+        return saved ? JSON.parse(saved) : defaultMenu;
+      }
+      function saveMenu(menu) {
+        localStorage.setItem("canteenMenu", JSON.stringify(menu));
+      }
+      function renderMenu() {
+        const menu = loadMenu();
+        const tbody = document.querySelector("#menuTable tbody");
+        tbody.innerHTML = "";
+        const role = localStorage.getItem("canteenCurrentRole") || "user";
+        menu.forEach((item, idx) => {
+          const tr = document.createElement("tr");
+          if (role === "admin") {
+            tr.innerHTML = `
+        <td>${item.name}</td>
+        <td><span id="stock-${idx}">${item.stock}</span></td>
+        <td><span id="price-${idx}">₱${item.price !== undefined ? item.price : ""}</span><input type="number" min="0" step="0.01" value="${item.price !== undefined ? item.price : ""}" id="input-price-${idx}" style="display:none;width:80px;"></td>
+        <td><input type="number" min="0" value="${item.stock}" id="input-${idx}" style="display:none;width:80px;"><button onclick="editStock(${idx})" id="editBtn-${idx}" class="success">Edit</button><button onclick="saveStock(${idx})" id="saveBtn-${idx}" style="display:none;" class="primary">Save</button><button onclick="removeMenuItem(${idx})" id="removeBtn-${idx}" class="danger" style="margin-left:8px;">Remove</button><button onclick="showNutritionFor(${idx})" id="nutBtn-${idx}" class="link" style="margin-left:8px;">Nutrition</button></td>
+      `;
+          } else {
+            tr.innerHTML = `<td>${item.name}</td><td><span id="stock-${idx}">${item.stock}</span></td><td>₱${item.price !== undefined ? item.price : ""}</td><td><span style="color:#888;">View Only</span> <button onclick="showNutritionFor(${idx})" class="link" style="margin-left:8px;">Nutrition</button></td>`;
+          }
+          tbody.appendChild(tr);
+        });
+
+        const adminArea = document.getElementById("menuAdminArea");
+        if (role === "admin" && adminArea) {
+          adminArea.innerHTML = `
+      <form id="addMenuForm" class="form-inline">
+        <input type="text" id="addMenuName" placeholder="New Item Name" required style="padding:6px;">
+        <input type="number" id="addMenuStock" placeholder="Stock" min="0" required class="small" style="padding:6px;">
+        <input type="number" id="addMenuPrice" placeholder="Price" min="0" step="0.01" required class="small" style="padding:6px;">
+        <button type="submit" class="primary">Add Item</button>
+      </form>
+    `;
+          document.getElementById("addMenuForm").onsubmit = function (e) {
+            e.preventDefault();
+            const name = document.getElementById("addMenuName").value.trim();
+            const stock = parseInt(
+              document.getElementById("addMenuStock").value,
+              10,
+            );
+            const price = parseFloat(
+              document.getElementById("addMenuPrice").value,
+            );
+            if (!name || isNaN(stock) || stock < 0 || isNaN(price) || price < 0)
+              return;
+            const menu = loadMenu();
+            menu.push({ name, stock, price: price.toFixed(2) });
+            saveMenu(menu);
+            renderMenu();
+          };
+        } else if (adminArea) {
+          adminArea.innerHTML = "";
+        }
+
+        // change password area
+        let changePassForm = document.getElementById("changePassFormArea");
+        if (!changePassForm) {
+          changePassForm = document.createElement("div");
+          changePassForm.id = "changePassFormArea";
+          adminArea.parentNode.appendChild(changePassForm);
+        }
+        changePassForm.innerHTML = `<button id="showChangePassBtn" class="primary" style="margin-top:28px;">Change Password</button><form id="changePassForm" style="display:none;margin-top:16px;max-width:350px;background:#f9f9f9;padding:20px 16px;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,0.04);" class="change-pass"><h3 style="margin-top:0;color:var(--primary);">Change Password</h3><div id="changePassError" class="error"></div><div id="changePassSuccess" class="success"></div><label for="oldPass">Old Password</label><input type="password" id="oldPass" placeholder="Old Password" autocomplete="current-password" style="width:100%;margin-bottom:8px;"><label for="newPass">New Password</label><input type="password" id="newPass" placeholder="New Password" autocomplete="new-password" style="width:100%;margin-bottom:8px;"><label for="confirmNewPass">Confirm New Password</label><input type="password" id="confirmNewPass" placeholder="Confirm New Password" autocomplete="new-password" style="width:100%;margin-bottom:12px;"><button type="submit" class="primary" style="width:100%;">Update Password</button><button type="button" id="cancelChangePassBtn" class="danger" style="width:100%;margin-top:8px;">Cancel</button></form>`;
+        document.getElementById("showChangePassBtn").onclick = function () {
+          document.getElementById("changePassForm").style.display = "";
+          this.style.display = "none";
+        };
+        document.getElementById("cancelChangePassBtn").onclick = function () {
+          document.getElementById("changePassForm").style.display = "none";
+          document.getElementById("showChangePassBtn").style.display = "";
+        };
+        document.getElementById("changePassForm").onsubmit = function (e) {
+          e.preventDefault();
+          const oldPass = document.getElementById("oldPass").value;
+          const newPass = document.getElementById("newPass").value;
+          const confirmNewPass =
+            document.getElementById("confirmNewPass").value;
+          const errorDiv = document.getElementById("changePassError");
+          const successDiv = document.getElementById("changePassSuccess");
+          errorDiv.textContent = "";
+          successDiv.textContent = "";
+          if (!oldPass || !newPass || !confirmNewPass) {
+            errorDiv.textContent = "Please fill in all fields.";
+            return;
+          }
+          if (newPass !== confirmNewPass) {
+            errorDiv.textContent = "New passwords do not match.";
+            return;
+          }
+          let users = JSON.parse(localStorage.getItem("canteenUsers") || "[]");
+          const username = localStorage.getItem("canteenCurrentUser");
+          const idx = users.findIndex((u) => u.username === username);
+          if (idx === -1) {
+            errorDiv.textContent = "User not found.";
+            return;
+          }
+          if (users[idx].password !== oldPass) {
+            errorDiv.textContent = "Current password is incorrect.";
+            return;
+          }
+          users[idx].password = newPass;
+          localStorage.setItem("canteenUsers", JSON.stringify(users));
+          successDiv.textContent = "Password updated successfully!";
+          document.getElementById("oldPass").value = "";
+          document.getElementById("newPass").value = "";
+          document.getElementById("confirmNewPass").value = "";
+        };
+      }
+
+      // Admin helpers
+      window.removeMenuItem = function (idx) {
+        const menu = loadMenu();
+        if (idx >= 0 && idx < menu.length) {
+          if (confirm("Are you sure you want to remove this menu item?")) {
+            menu.splice(idx, 1);
+            saveMenu(menu);
+            renderMenu();
+          }
+        }
+      };
+      window.editStock = function (idx) {
+        const role = localStorage.getItem("canteenCurrentRole") || "user";
+        if (role !== "admin") return;
+        document.getElementById(`stock-${idx}`).style.display = "none";
+        document.getElementById(`input-${idx}`).style.display = "inline-block";
+        document.getElementById(`price-${idx}`).style.display = "none";
+        document.getElementById(`input-price-${idx}`).style.display =
+          "inline-block";
+        document.getElementById(`editBtn-${idx}`).style.display = "none";
+        document.getElementById(`saveBtn-${idx}`).style.display =
+          "inline-block";
+      };
+      window.saveStock = function (idx) {
+        const role = localStorage.getItem("canteenCurrentRole") || "user";
+        if (role !== "admin") return;
+        const menu = loadMenu();
+        const input = document.getElementById(`input-${idx}`);
+        const priceInput = document.getElementById(`input-price-${idx}`);
+        const newStock = parseInt(input.value, 10);
+        const newPrice = parseFloat(priceInput.value);
+        if (
+          !isNaN(newStock) &&
+          newStock >= 0 &&
+          !isNaN(newPrice) &&
+          newPrice >= 0
+        ) {
+          menu[idx].stock = newStock;
+          menu[idx].price = newPrice.toFixed(2);
+          saveMenu(menu);
+          renderMenu();
+        } else {
+          alert("Please enter valid stock and price.");
+        }
+      };
+
+      window.showNutritionFor = function (idx) {
+        const menu = loadMenu();
+        const item = menu[idx];
+        const content = document.getElementById("nutritionContent");
+        if (!item) {
+          content.innerHTML = "Item not found.";
+          toggleNutrition(true);
+          return;
+        }
+        if (item.nutrition) {
+          content.innerHTML = item.nutrition;
+        } else {
+          content.innerHTML =
+            '<div class="nutrition-facts"><strong>' +
+            item.name +
+            "</strong><div>No nutrition info available.</div></div>";
+        }
+        toggleNutrition(true);
+        document
+          .getElementById("nutritionSection")
+          .scrollIntoView({ behavior: "smooth", block: "start" });
+      };
+      window.toggleNutrition = function (show) {
+        const sec = document.getElementById("nutritionSection");
+        const menuBtn = document.getElementById("tabMenuBtn");
+        const nutBtn = document.getElementById("tabNutritionBtn");
+        if (!sec || !menuBtn || !nutBtn) return;
+        sec.style.display = show ? "" : "none";
+        if (show) {
+          menuBtn.classList.remove("primary");
+          nutBtn.classList.add("primary");
+        } else {
+          menuBtn.classList.add("primary");
+          nutBtn.classList.remove("primary");
+        }
+      };
+
+      // Logout & init
+      document.addEventListener("DOMContentLoaded", function () {
+        const logoutBtn = document.getElementById("logoutBtn");
+        if (logoutBtn) {
+          logoutBtn.onclick = function () {
+            localStorage.removeItem("canteenCurrentUser");
+            localStorage.removeItem("canteenCurrentRole");
+            showLogin();
+          };
+        }
+
+        // Ensure default admin accounts (helpful for first-run)
+        let users = JSON.parse(localStorage.getItem("canteenUsers") || "[]");
+        if (!users.find((u) => u.username === "LCBACanteenSTAFF")) {
+          users.push({
+            username: "LCBACanteenSTAFF",
+            password: "123123",
+            role: "admin",
+            idNum: "STAFF",
+            idPhoto: "",
+          });
+        }
+        if (!users.find((u) => u.username === "LCBAStaff")) {
+          users.push({
+            username: "LCBAStaff",
+            password: "123",
+            role: "admin",
+            idNum: "STAFF2",
+            idPhoto: "",
+          });
+        }
+        localStorage.setItem("canteenUsers", JSON.stringify(users));
+
+        if (localStorage.getItem("canteenCurrentUser")) {
+          users = JSON.parse(localStorage.getItem("canteenUsers") || "[]");
+          const user = localStorage.getItem("canteenCurrentUser");
+          const found = users.find((u) => u.username === user);
+          if (found && found.role) {
+            localStorage.setItem("canteenCurrentRole", found.role);
+          } else if (found) {
+            localStorage.setItem("canteenCurrentRole", "user");
+          }
+          showMenu();
+          renderMenu();
+        } else {
+          showLogin();
+        }
+      });
+    </script>
+  </body>
+</html>
