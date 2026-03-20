@@ -29,10 +29,6 @@ if(ENVIRONMENT == 'local' && DEBUG == true):
       $login->handleRequest();
       break;
 
-    case '/Logout':
-      $session->logout();
-      break;
-
     default:
       http_response_code(404);
       echo '404 Page Not Found';
