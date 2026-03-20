@@ -50,15 +50,15 @@ use ZipArchive;
  *   - Top outer border    : double solid 0.5pt (sz=4)
  *   - Bottom outer border : double solid 0.5pt (sz=4)
  *   - Header row bottom   : single solid 0.5pt applied to bottom of each cell in row 1
- *   - Footer row top      : single solid 0.5pt applied to top of each cell in last row
+ *   - Footer row top      : explicitly suppressed (none) on each footer cell
+ *   - Footer row bottom   : explicitly double on each footer cell (ensures tbl bottom is double)
  *   - Left/Right/insideV  : none
- *   - insideH             : none  (row separators handled per-cell on header/footer only)
+ *   - insideH             : none
  *
  * AFTER-TABLE FLOW:
  *   Table sets afterTable=true.
- *   Legend and Continuation do NOT reset afterTable — they are "table accessories".
- *   The first real body paragraph after the table (after any legend/continuation)
- *   receives 12pt (240 twips) before spacing, then afterTable is reset to false.
+ *   Legend and Continuation do NOT reset afterTable.
+ *   The first real body paragraph after the table receives 12pt before spacing.
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 class DocxFormatterService
@@ -84,9 +84,7 @@ class DocxFormatterService
             throw new RuntimeException('Could not create working copy of uploaded DOCX.');
         }
 
-        $this->sections = $this->normalizeMap($options['sections'] ?? [
-            'preliminary', 'chapters', 'appendices',
-        ]);
+        $this->sections = $this->normalizeMap($options['sections'] ?? ['chapters']);
         $this->rules = $this->normalizeMap($options['rules'] ?? [
             'spacing', 'indentation', 'alignment', 'captions',
             'continuation', 'borders', 'pagination',
@@ -98,7 +96,6 @@ class DocxFormatterService
         }
         try {
             $this->processMainDocument($zip);
-            $this->patchStylesXml($zip);
         } finally {
             $zip->close();
         }
@@ -121,97 +118,6 @@ class DocxFormatterService
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // Patch styles.xml
-    // ═══════════════════════════════════════════════════════════════════
-
-    private function patchStylesXml(ZipArchive $zip): void
-    {
-        $xml = $zip->getFromName('word/styles.xml');
-        if ($xml === false) { return; }
-
-        libxml_use_internal_errors(true);
-        $dom = new DOMDocument('1.0', 'UTF-8');
-        if (!$dom->loadXML($xml, LIBXML_NONET | LIBXML_NOBLANKS)) { return; }
-
-        $xpath = new DOMXPath($dom);
-        $xpath->registerNamespace('w', self::W_NS);
-
-        $docDefaults = $xpath->query('//w:docDefaults/w:rPrDefault/w:rPr')->item(0);
-        if ($docDefaults instanceof DOMElement) {
-            $this->overrideRPrToGaramond($docDefaults, $dom, 24);
-        }
-
-        foreach ($xpath->query('//w:style[@w:styleId="Normal"]') as $style) {
-            if (!$style instanceof DOMElement) { continue; }
-            $rPr = $xpath->query('./w:rPr', $style)->item(0);
-            if (!$rPr instanceof DOMElement) {
-                $rPr = $dom->createElementNS(self::W_NS, 'w:rPr');
-                $style->appendChild($rPr);
-            }
-            $this->overrideRPrToGaramond($rPr, $dom, 24);
-        }
-
-        foreach ($xpath->query('//w:style[@w:styleId="DefaultParagraphFont"]') as $style) {
-            if (!$style instanceof DOMElement) { continue; }
-            $rPr = $xpath->query('./w:rPr', $style)->item(0);
-            if ($rPr instanceof DOMElement) {
-                $this->overrideRPrToGaramond($rPr, $dom, 24);
-            }
-        }
-
-        $headingIds = ['Heading1', 'Heading2', 'Heading3', 'Heading4',
-                       '1', '2', '3', '4',
-                       'heading1', 'heading2', 'heading3'];
-        foreach ($headingIds as $hId) {
-            foreach ($xpath->query(sprintf('//w:style[@w:styleId="%s"]', $hId)) as $style) {
-                if (!$style instanceof DOMElement) { continue; }
-                $rPr = $xpath->query('./w:rPr', $style)->item(0);
-                if ($rPr instanceof DOMElement) { $style->removeChild($rPr); }
-                foreach ($xpath->query('./w:pPr/w:rPr', $style) as $pPrRPr) {
-                    if ($pPrRPr instanceof DOMElement && $pPrRPr->parentNode) {
-                        $pPrRPr->parentNode->removeChild($pPrRPr);
-                    }
-                }
-            }
-        }
-
-        foreach ($xpath->query('//w:style[@w:styleId="ListParagraph"]') as $style) {
-            if (!$style instanceof DOMElement) { continue; }
-            $rPr = $xpath->query('./w:rPr', $style)->item(0);
-            if ($rPr instanceof DOMElement) { $style->removeChild($rPr); }
-        }
-
-        $zip->addFromString('word/styles.xml', $dom->saveXML() ?: $xml);
-    }
-
-    private function overrideRPrToGaramond(DOMElement $rPr, DOMDocument $dom, int $sz): void
-    {
-        $szStr = (string)$sz;
-        foreach (['rFonts', 'sz', 'szCs'] as $tag) {
-            $nodes = [];
-            foreach ($rPr->childNodes as $child) {
-                if ($child instanceof DOMElement
-                    && $child->namespaceURI === self::W_NS
-                    && $child->localName === $tag
-                ) { $nodes[] = $child; }
-            }
-            foreach ($nodes as $n) { $rPr->removeChild($n); }
-        }
-        $rFonts = $dom->createElementNS(self::W_NS, 'w:rFonts');
-        $rFonts->setAttributeNS(self::W_NS, 'w:ascii',    'Garamond');
-        $rFonts->setAttributeNS(self::W_NS, 'w:hAnsi',    'Garamond');
-        $rFonts->setAttributeNS(self::W_NS, 'w:eastAsia', 'Garamond');
-        $rFonts->setAttributeNS(self::W_NS, 'w:cs',       'Garamond');
-        $rPr->insertBefore($rFonts, $rPr->firstChild);
-        $szEl   = $dom->createElementNS(self::W_NS, 'w:sz');
-        $szElCs = $dom->createElementNS(self::W_NS, 'w:szCs');
-        $szEl->setAttributeNS(self::W_NS,   'w:val', $szStr);
-        $szElCs->setAttributeNS(self::W_NS, 'w:val', $szStr);
-        $rPr->appendChild($szEl);
-        $rPr->appendChild($szElCs);
-    }
-
-    // ═══════════════════════════════════════════════════════════════════
     // Document processing
     // ═══════════════════════════════════════════════════════════════════
 
@@ -229,30 +135,68 @@ class DocxFormatterService
             throw new RuntimeException('DOCX body element not found.');
         }
 
+        // ── Find zone boundaries ────────────────────────────────────────
+        // Collect only body children that fall between CHAPTER 1 (inclusive)
+        // and APPENDIX/end-of-body (exclusive). Pre-passes and the main loop
+        // all work on this same slice so preliminary and appendices are never touched.
+        $allChildren   = [];
+        foreach ($body->childNodes as $c) {
+            if ($c instanceof DOMElement) { $allChildren[] = $c; }
+        }
+
+        $chapterStart = -1;
+        $appendixEnd  = count($allChildren); // exclusive upper bound
+
+        foreach ($allChildren as $idx => $child) {
+            if ($child->localName !== 'p') { continue; }
+            $t = '';
+            foreach ($xpath->query('.//w:t', $child) as $tn) { $t .= $tn->textContent; }
+            $t = trim(preg_replace('/\s+/', ' ', $t) ?? $t);
+            if ($chapterStart === -1
+                && preg_match('/^chapter\s+([ivxlcdm]+|\d+)$/iu', $t) === 1
+            ) {
+                $chapterStart = $idx;
+            }
+            if ($chapterStart !== -1
+                && preg_match('/^appendix(?:es)?(\s+[a-zA-Z0-9])?$/iu', $t) === 1
+            ) {
+                $appendixEnd = $idx;
+                break;
+            }
+        }
+
+        // Nothing to format if we never found a chapter label
+        if ($chapterStart === -1) {
+            $zip->addFromString('word/document.xml', $dom->saveXML() ?: $xml);
+            return;
+        }
+
+        $scopedChildren = array_slice($allChildren, $chapterStart, $appendixEnd - $chapterStart);
+
+        // ── Pre-pass A: hoist captions placed after tables to before them ──
+        $this->hoistTableCaptions($body, $xpath, $scopedChildren);
+
+        // ── Pre-pass B: table continuation (tblHeader + split + labels) ──
+        if (isset($this->rules['continuation'])) {
+            $this->handleTableContinuation($body, $xpath, $scopedChildren);
+        }
+
         $state = [
-            'zone'                => 'preliminary',
-            'currentChapter'      => 0,
-            'expectChapterTitle'  => false,
-            'expectAppendixTitle' => false,
-            'isFirstParagraph'    => true,
-            'afterTable'          => false,
-            'lastTableNumber'     => '',
+            'zone'               => 'preliminary',
+            'currentChapter'     => 0,
+            'expectChapterTitle' => false,
+            'isFirstParagraph'   => true,
+            'afterTable'         => false,
+            'lastTableNumber'    => '',
         ];
 
-        foreach ($body->childNodes as $child) {
+        foreach ($scopedChildren as $child) {
             if (!$child instanceof DOMElement) { continue; }
             if ($child->localName === 'p') {
                 $this->processParagraph($child, $xpath, $state);
             } elseif ($child->localName === 'tbl') {
                 $this->processTable($child, $xpath, $state);
                 $state['afterTable'] = true;
-
-                // If this table has a lastRenderedPageBreak inside it (meaning
-                // Word already broke it across pages) AND it is NOT already
-                // followed by a continuation paragraph, insert one now.
-                if (isset($this->rules['continuation'])) {
-                    $this->maybeInsertContinuation($child, $xpath, $state, $body);
-                }
             }
         }
 
@@ -260,345 +204,468 @@ class DocxFormatterService
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // Paragraph routing
+    // Pre-pass A: hoist table captions
     // ═══════════════════════════════════════════════════════════════════
 
-    /** @param array<string, mixed> $state */
-    private function processParagraph(DOMElement $p, DOMXPath $xpath, array &$state): void
+    /** @param DOMElement[] $children */
+    private function hoistTableCaptions(DOMElement $body, DOMXPath $xpath, array $children = []): void
     {
-        $text       = $this->getParagraphText($xpath, $p);
-        $normalized = $this->normalizeText($text);
-        $styleId    = $this->getParagraphStyleId($xpath, $p);
-
-        // ── Zone / state transitions ──────────────────────────────────
-        $chapterMatch    = [];
-        $isChapterLabel  = preg_match('/^chapter\s+([ivxlcdm]+|\d+)$/iu', $normalized, $chapterMatch) === 1;
-        $isAppendixLabel = preg_match('/^appendix(?:es)?(?:\s+[a-zA-Z0-9])?$/iu', $normalized) === 1;
-        $isReferences    = preg_match('/^references$/iu', $normalized) === 1;
-
-        if ($isChapterLabel) {
-            $state['zone']                = 'chapters';
-            $state['currentChapter']      = $this->chapterToInt($chapterMatch[1]);
-            $state['expectChapterTitle']  = true;
-            $state['expectAppendixTitle'] = false;
-            $state['isFirstParagraph']    = true;
-        } elseif ($isAppendixLabel) {
-            $state['zone']                = 'appendices';
-            $state['expectAppendixTitle'] = true;
-            $state['expectChapterTitle']  = false;
-            $state['isFirstParagraph']    = true;
-        } elseif ($isReferences) {
-            $state['zone']                = 'chapters';
-            $state['expectChapterTitle']  = false;
-            $state['expectAppendixTitle'] = false;
-            $state['isFirstParagraph']    = true;
-        }
-
-        if (!isset($this->sections[(string)$state['zone']])) { return; }
-
-        $hasDrawing = $xpath->query('.//w:drawing | .//w:pict', $p)->length > 0;
-
-        // Figure paragraphs with no text caught BEFORE empty-text check.
-        if ($hasDrawing && $normalized === '' && !$this->isInTable($xpath, $p)) {
-            $state['afterTable']       = false;
-            $state['isFirstParagraph'] = false;
-            $this->applyFigureParagraph($xpath, $p);
-            return;
-        }
-
-        // Empty paragraphs: clear Calibri leak, skip routing.
-        if ($normalized === '') {
-            $this->applyEmptyParagraph($xpath, $p);
-            return;
-        }
-
-        $hasNumbering = $xpath->query('./w:pPr/w:numPr', $p)->length > 0;
-        $isInTable    = $this->isInTable($xpath, $p);
-
-        // ── Caption / continuation / legend detection ─────────────────
-        $isFigureCaption = !$state['isFirstParagraph']
-            && preg_match('/^figure\s+\d+[\-\.]\d+\b/iu', $normalized) === 1
-            && mb_strlen($normalized) <= 120
-            && preg_match('/^figure\s+[\d\-\.]+\s+\w+\s+(presents|shows|describes|summarizes|lists|displays|illustrates|contains|provides|compares|indicates|reveals|demonstrates)\b/iu', $normalized) === 0;
-
-        // Table caption: starts with "Table X-X" but is NOT a closing/discussion
-        // paragraph like "Table 3-1 presents..." or "Table 3-1 shows...".
-        // Captions are short (≤120 chars) and don't contain sentence verbs
-        // immediately after the table number.
-        $isTableCaption = !$state['isFirstParagraph']
-            && preg_match('/^table\s+\d+[\-\.]\d+\b/iu', $normalized) === 1
-            && mb_strlen($normalized) <= 120
-            && preg_match('/^table\s+[\d\-\.]+\s+\w+\s+(presents|shows|describes|summarizes|lists|displays|illustrates|contains|provides|compares|indicates|reveals|demonstrates)\b/iu', $normalized) === 0;
-
-        // Matches "Continuation of Table 1-1", "Continuation of Figure 2.3", etc.
-        $isContinuation = preg_match(
-            '/^continuation\s+of\s+(table|figure|appendix)(\s+[\d\-\.]+)?/iu', $normalized
-        ) === 1;
-
-        $isLegend = preg_match('/^legend\s*:/iu', $normalized) === 1;
-
-        // ── Heading1 style block ──────────────────────────────────────
-        if ($styleId === 'Heading1') {
-            if ($isChapterLabel) {
-                $state['afterTable'] = false;
-                $this->applyChapterLabel($xpath, $p);
-                return;
+        if (empty($children)) {
+            foreach ($body->childNodes as $child) {
+                if ($child instanceof DOMElement) { $children[] = $child; }
             }
-            if ($isAppendixLabel) {
-                $state['afterTable'] = false;
-                $this->applyAppendixLabel($xpath, $p);
-                return;
+        }
+
+        foreach ($children as $i => $child) {
+            if ($child->localName !== 'tbl') { continue; }
+
+            $captionNode   = null;
+            $emptysBetween = [];
+
+            for ($j = $i + 1; $j < count($children); $j++) {
+                $sib = $children[$j];
+                if ($sib->localName !== 'p') { break; }
+
+                $text = '';
+                foreach ($xpath->query('.//w:t', $sib) as $t) { $text .= $t->textContent; }
+                $text = trim(preg_replace('/\s+/', ' ', $text) ?? $text);
+
+                if ($text === '') { $emptysBetween[] = $sib; continue; }
+
+                if (preg_match('/^table\s+\d+[\-\.]\d+\b/iu', $text) === 1
+                    && mb_strlen($text) <= 120
+                    && preg_match('/^table\s+[\d\-\.]+\s+\w+\s+(presents|shows|describes|summarizes|lists|displays|illustrates|contains|provides|compares|indicates|reveals|demonstrates)\b/iu', $text) === 0
+                ) {
+                    $captionNode = $sib;
+                }
+                break;
             }
-            if ((bool)$state['expectChapterTitle']
-                && !$hasDrawing && !$isFigureCaption && !$isTableCaption && !$hasNumbering
-            ) {
-                $state['expectChapterTitle'] = false;
-                $state['isFirstParagraph']   = true;
-                $state['afterTable']         = false;
-                $this->applyChapterTitle($xpath, $p);
-                return;
+
+            if ($captionNode === null) { continue; }
+
+            $body->insertBefore($captionNode, $child);
+            foreach ($emptysBetween as $empty) {
+                if ($empty->parentNode !== null) { $empty->parentNode->removeChild($empty); }
             }
-            if ((bool)$state['expectAppendixTitle']
-                && !$hasDrawing && !$isFigureCaption && !$isTableCaption && !$hasNumbering
-            ) {
-                $state['expectAppendixTitle'] = false;
-                $state['isFirstParagraph']    = true;
-                $state['afterTable']          = false;
-                $this->applyAppendixTitle($xpath, $p);
-                return;
-            }
-            if ($isReferences) {
-                $state['afterTable'] = false;
-                $this->applyReferencesTitle($xpath, $p);
-                return;
-            }
-            $state['afterTable'] = false;
-            $this->applyPreliminaryTitle($xpath, $p);
-            return;
         }
-
-        // ── Chapter title (non-Heading1) ──────────────────────────────
-        if ((bool)$state['expectChapterTitle']
-            && !$hasDrawing && !$isFigureCaption && !$isTableCaption && !$hasNumbering
-        ) {
-            $state['expectChapterTitle'] = false;
-            $state['isFirstParagraph']   = true;
-            $state['afterTable']         = false;
-            $this->applyChapterTitle($xpath, $p);
-            return;
-        }
-
-        // ── Appendix title ────────────────────────────────────────────
-        if ((bool)$state['expectAppendixTitle']
-            && !$hasDrawing && !$isFigureCaption && !$isTableCaption && !$hasNumbering
-        ) {
-            $state['expectAppendixTitle'] = false;
-            $state['isFirstParagraph']    = true;
-            $state['afterTable']          = false;
-            $this->applyAppendixTitle($xpath, $p);
-            return;
-        }
-
-        // ── Plain appendix label (non-Heading1) ──────────────────────
-        if ($isAppendixLabel) {
-            $state['afterTable'] = false;
-            $this->applyAppendixLabel($xpath, $p);
-            return;
-        }
-
-        // ── Chapter label (non-Heading1) ─────────────────────────────
-        if ($isChapterLabel) {
-            $state['afterTable'] = false;
-            $this->applyChapterLabel($xpath, $p);
-            return;
-        }
-
-        // ── References title (non-Heading1) ──────────────────────────
-        if ($isReferences) {
-            $state['afterTable'] = false;
-            $this->applyReferencesTitle($xpath, $p);
-            return;
-        }
-
-        $state['isFirstParagraph'] = false;
-
-        // ── Figure paragraph ──────────────────────────────────────────
-        if ($hasDrawing) {
-            $state['afterTable'] = false;
-            $this->applyFigureParagraph($xpath, $p);
-            return;
-        }
-
-        // ── Figure caption ────────────────────────────────────────────
-        if ($isFigureCaption) {
-            $state['afterTable'] = false;
-            $this->applyFigureCaption($xpath, $p);
-            return;
-        }
-
-        // ── Table caption ─────────────────────────────────────────────
-        if ($isTableCaption) {
-            $state['afterTable'] = false;
-            // Extract table number e.g. "3-2" from "Table 3-2. Customer Purposive Sampling."
-            $m = [];
-            if (preg_match('/^table\s+([\d]+[\-\.][\d]+)\b/iu', $normalized, $m)) {
-                $state['lastTableNumber'] = $m[1];
-            }
-            $this->applyTableCaption($xpath, $p);
-            return;
-        }
-
-        // ── Continuation label ────────────────────────────────────────
-        // Does NOT reset afterTable — it is a table accessory. The first
-        // real body paragraph after the continuation still gets 12pt before.
-        if ($isContinuation) {
-            $this->applyContinuationLabel($xpath, $p, (string)$state['lastTableNumber']);
-            return;
-        }
-
-        // ── Legend ────────────────────────────────────────────────────
-        // Does NOT reset afterTable — same rule as continuation above.
-        if ($isLegend) {
-            $this->applyLegend($xpath, $p);
-            return;
-        }
-
-        // ── Table-internal paragraphs handled in processTable ─────────
-        if ($isInTable) { return; }
-
-        // ── Reference entries ─────────────────────────────────────────
-        if ((string)$state['zone'] === 'chapters'
-            && preg_match('/^\[\d+\]|^\d+\.\s/u', $normalized) === 1
-        ) {
-            $state['afterTable'] = false;
-            $this->applyReferenceEntry($xpath, $p);
-            return;
-        }
-
-        // ── Numbered / bulleted lists ─────────────────────────────────
-        if ($hasNumbering || $styleId === 'ListParagraph') {
-            $state['afterTable'] = false;
-            $this->applyListParagraph($xpath, $p);
-            return;
-        }
-
-        // ── Heading2 style ────────────────────────────────────────────
-        if ($styleId === 'Heading2') {
-            $state['afterTable'] = false;
-            $this->applyHeading2($xpath, $p);
-            return;
-        }
-
-        // ── Inline heading (bold+italic) ──────────────────────────────
-        if ($this->isInlineHeading($xpath, $p, $normalized)) {
-            $state['afterTable'] = false;
-            $this->applyInlineHeading($xpath, $p);
-            return;
-        }
-
-        // ── Bold-only heading ─────────────────────────────────────────
-        if ($this->isBoldHeading($xpath, $p, $normalized)) {
-            $state['afterTable'] = false;
-            $this->applyBoldHeading($xpath, $p);
-            return;
-        }
-
-        // ── Body paragraph (including closing paragraph after table) ──
-        // $beforeSpacing is computed HERE so it always reads the live
-        // afterTable value — even when legend/continuation passed through
-        // without resetting it.
-        $beforeSpacing       = (bool)$state['afterTable'] ? 240 : 0;
-        $state['afterTable'] = false;
-        $this->applyBodyParagraph($xpath, $p, $beforeSpacing);
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // Table processing
+    // Pre-pass B: table continuation
     // ═══════════════════════════════════════════════════════════════════
 
-    /** @param array<string, mixed> $state */
-    private function processTable(DOMElement $tbl, DOMXPath $xpath, array &$state): void
+    /**
+     * 1. Set w:tblHeader on first row of every table.
+     * 2. Split tables at w:lastRenderedPageBreak (written by Word after rendering).
+     * 3. Handle already-split pairs (two adjacent w:tbl with only empty/break
+     *    paragraphs between them) — remove gap, fix borders, insert label.
+     */
+    /** @param DOMElement[] $scopedChildren */
+    private function handleTableContinuation(DOMElement $body, DOMXPath $xpath, array $scopedChildren = []): void
     {
-        if (!isset($this->sections[(string)($state['zone'] ?? '')])) { return; }
+        $wNs = self::W_NS;
 
-        if (isset($this->rules['borders'])) {
-            $this->setTableBorders($tbl, $xpath);
-        }
-
-        foreach ($xpath->query('.//w:tc', $tbl) as $tc) {
-            if (!$tc instanceof DOMElement) { continue; }
-            foreach ($xpath->query('.//w:p', $tc) as $p) {
-                if (!$p instanceof DOMElement) { continue; }
-                $isNumbered = $xpath->query('./w:pPr/w:numPr', $p)->length > 0;
-                if (isset($this->rules['alignment'])) {
-                    $this->writePAlignment($p, $isNumbered ? 'both' : 'center');
+        // Remove any existing tblHeader from all scoped tables so no row is locked/uneditable
+        foreach ($scopedChildren as $child) {
+            if (!$child instanceof DOMElement || $child->localName !== 'tbl') { continue; }
+            foreach ($xpath->query('w:tr/w:trPr/w:tblHeader', $child) as $th) {
+                if ($th->parentNode instanceof DOMElement) {
+                    $th->parentNode->removeChild($th);
                 }
-                if (isset($this->rules['spacing'])) {
-                    $this->writePSpacing($p, 0, 0, 240);
-                }
-                if (isset($this->rules['indentation'])) {
-                    $this->writePIndent($p, 0);
-                }
-                $this->writeRuns($xpath, $p, 'Arial', 20, false, false);
-                $this->writePPrRPr($p, 'Arial', 20, false, false);
             }
         }
+
+        // Step 2: handle already-split pairs within scoped children only
+        $snap2 = $scopedChildren;
+        $lastTableNumber = '';
+
+        for ($i = 0; $i < count($snap2); $i++) {
+            $child = $snap2[$i];
+
+            if ($child->localName === 'p') {
+                $text = '';
+                foreach ($xpath->query('.//w:t', $child) as $t) { $text .= $t->textContent; }
+                $text = trim(preg_replace('/\s+/', ' ', $text) ?? $text);
+                $m = [];
+                if (preg_match('/^table\s+([\d]+[\-\.][\d]+)\b/iu', $text, $m)) {
+                    $lastTableNumber = $m[1];
+                }
+                continue;
+            }
+            if ($child->localName !== 'tbl') { continue; }
+            if ($child->parentNode === null)  { continue; }
+
+            // Skip if already has a continuation label anywhere between this
+            // table and the next non-empty sibling (doSplitTable inserts empty
+            // paragraphs before the label, so we must look past them).
+            $alreadyHasLabel = false;
+            for ($k = $i + 1; $k < count($snap2); $k++) {
+                $sib = $snap2[$k];
+                if ($sib->localName === 'tbl') { break; }
+                if ($sib->localName !== 'p') { break; }
+                $t = '';
+                foreach ($xpath->query('.//w:t', $sib) as $tn) { $t .= $tn->textContent; }
+                if (trim($t) === '') { continue; } // empty paragraph — skip over
+                if (preg_match('/^continuation\s+of\s+(table|figure)/iu', trim($t)) === 1) {
+                    $alreadyHasLabel = true;
+                }
+                break;
+            }
+            if ($alreadyHasLabel) {
+                // Label already exists — insert a page-break paragraph before
+                // it so it starts at the top of the next page.
+                for ($k = $i + 1; $k < count($snap2); $k++) {
+                    $sib = $snap2[$k];
+                    if ($sib->localName === 'tbl') { break; }
+                    if ($sib->localName !== 'p') { break; }
+                    $t = '';
+                    foreach ($xpath->query('.//w:t', $sib) as $tn) { $t .= $tn->textContent; }
+                    if (trim($t) === '') { continue; }
+                    if (preg_match('/^continuation\s+of\s+(table|figure)/iu', trim($t)) === 1) {
+                        $sib->parentNode->insertBefore(
+                            $this->buildZeroHeightPageBreakP($body->ownerDocument), $sib
+                        );
+                    }
+                    break;
+                }
+                continue;
+            }
+
+            // Look ahead past empty/break paragraphs for a second table.
+            $between          = [];
+            $nextTbl          = null;
+            $hasExplicitBreak = false;
+            for ($j = $i + 1; $j < count($snap2); $j++) {
+                $sib = $snap2[$j];
+                if ($sib->localName === 'tbl') {
+                    $nextTbl = $sib;
+                    $i = $j - 1;
+                    break;
+                }
+                if ($sib->localName !== 'p') { break; }
+                $t = '';
+                foreach ($xpath->query('.//w:t', $sib) as $tn) { $t .= $tn->textContent; }
+                $hasBreak = $xpath->query('.//w:br[@w:type="page"]', $sib)->length > 0;
+                if ($hasBreak) { $hasExplicitBreak = true; }
+                if (trim($t) === '' || $hasBreak) { $between[] = $sib; continue; }
+                break; // non-empty paragraph between tables — stop looking
+            }
+
+            if ($nextTbl === null) { continue; }
+
+            if (!$hasExplicitBreak) {
+                // Two tables separated only by empty paragraphs — merge them into one.
+                // Move all rows from the second table into the first, then remove the
+                // second table and all gap paragraphs.
+                $rows2 = [];
+                foreach ($xpath->query('w:tr', $nextTbl) as $row) {
+                    if ($row instanceof DOMElement) { $rows2[] = $row; }
+                }
+                foreach ($rows2 as $row) {
+                    $child->appendChild($row);
+                }
+                foreach ($between as $gap) {
+                    if ($gap->parentNode !== null) { $gap->parentNode->removeChild($gap); }
+                }
+                if ($nextTbl->parentNode !== null) {
+                    $nextTbl->parentNode->removeChild($nextTbl);
+                }
+                $this->applyTableBordersSpec($child, $xpath);
+                continue;
+            }
+
+            // Explicit page break in gap — tables are intentionally split by the author.
+            // Remove the gap, apply borders, insert page-break + continuation label.
+            foreach ($between as $gap) {
+                if ($gap->parentNode !== null) { $gap->parentNode->removeChild($gap); }
+            }
+
+            $this->applyTableBordersSpec($child,   $xpath);
+            $this->applyTableBordersSpec($nextTbl, $xpath);
+
+            $label = $lastTableNumber !== ''
+                ? 'Continuation of Table ' . $lastTableNumber . '...'
+                : 'Continuation of Table...';
+
+            $body->insertBefore($this->buildZeroHeightPageBreakP($body->ownerDocument), $nextTbl);
+            $body->insertBefore($this->buildContinuationP($body->ownerDocument, $label), $nextTbl);
+        }
+    }
+
+    /** @param DOMElement[] $rows */
+    private function doSplitTable(
+        DOMElement $tbl,
+        array      $rows,
+        int        $splitAt,
+        DOMElement $body,
+        DOMXPath   $xpath,
+        string     $lastTableNumber
+    ): void {
+        $dom     = $tbl->ownerDocument;
+        $wNs     = self::W_NS;
+        $tblPr   = $this->getChild($tbl, 'tblPr');
+        $tblGrid = null;
+        foreach ($tbl->childNodes as $c) {
+            if ($c instanceof DOMElement && $c->localName === 'tblGrid') {
+                $tblGrid = $c; break;
+            }
+        }
+
+        $tbl1 = $dom->createElementNS($wNs, 'w:tbl');
+        $tbl2 = $dom->createElementNS($wNs, 'w:tbl');
+        foreach ([$tbl1, $tbl2] as $half) {
+            if ($tblPr   !== null) { $half->appendChild($tblPr->cloneNode(true)); }
+            if ($tblGrid !== null) { $half->appendChild($tblGrid->cloneNode(true)); }
+        }
+        for ($i = 0; $i < $splitAt; $i++) {
+            $tbl1->appendChild($rows[$i]->cloneNode(true));
+        }
+        for ($i = $splitAt; $i < count($rows); $i++) {
+            $tbl2->appendChild($rows[$i]->cloneNode(true));
+        }
+
+        $this->applyTableBordersSpec($tbl1, $xpath);
+        $this->applyTableBordersSpec($tbl2, $xpath);
+
+        $body->insertBefore($tbl1, $tbl);
+        // Insert empty paragraphs after tbl1 so the continuation label and tbl2
+        // flow naturally to the next page without a hard page break.
+        for ($e = 0; $e < 4; $e++) {
+            $ep  = $dom->createElementNS($wNs, 'w:p');
+            $ePr = $dom->createElementNS($wNs, 'w:pPr');
+            $sp  = $dom->createElementNS($wNs, 'w:spacing');
+            $sp->setAttributeNS($wNs, 'w:before',   '0');
+            $sp->setAttributeNS($wNs, 'w:after',    '0');
+            $sp->setAttributeNS($wNs, 'w:line',     '240');
+            $sp->setAttributeNS($wNs, 'w:lineRule', 'auto');
+            $ePr->appendChild($sp);
+            $ep->appendChild($ePr);
+            $body->insertBefore($ep, $tbl);
+        }
+        $body->insertBefore($tbl2, $tbl);
+        $body->removeChild($tbl);
     }
 
     /**
-     * Insert a continuation label paragraph after a table IF:
-     *   1. The table contains a w:lastRenderedPageBreak — meaning Word has
-     *      already rendered this table as spanning multiple pages.
-     *   2. The next sibling is NOT already a continuation paragraph.
-     *
-     * This is the only reliable way to detect multi-page tables without
-     * a full rendering engine. w:lastRenderedPageBreak is written by Word
-     * when it saves the file after rendering.
-     *
-     * @param array<string, mixed> $state
+     * Apply full table border spec:
+     *   tblBorders: top=double, bottom=double, others=none
+     *   Header cells bottom : single 0.5pt  (separator line under header row)
+     *   Footer cells top    : none           (suppress inherited tblBorders top=double)
+     *   Footer cells bottom : double 0.5pt   (explicit — ensures the outer bottom is
+     *                                         always double even when Word ignores tblBorders
+     *                                         in favour of cell-level resolution on split tables)
+     *   All other cells     : tcBorders wiped
      */
-    private function maybeInsertContinuation(
-        DOMElement $tbl,
-        DOMXPath   $xpath,
-        array      $state,
-        DOMElement $body
-    ): void {
-        // Check if table spans multiple pages via lastRenderedPageBreak
-        $hasPageBreak = $xpath->query(
-            './/w:lastRenderedPageBreak', $tbl
-        )->length > 0;
+    private function applyTableBordersSpec(DOMElement $tbl, DOMXPath $xpath): void
+    {
+        // Always de-float — continuation tables come here without going through processTable
+        $this->deFloatTable($tbl);
 
-        if (!$hasPageBreak) { return; }
-
-        // Check next sibling is not already a continuation paragraph
-        $next     = $tbl->nextSibling;
-        $nextText = '';
-        if ($next instanceof DOMElement && $next->localName === 'p') {
-            foreach ($xpath->query('.//w:t', $next) as $t) {
-                $nextText .= $t->textContent;
+        // Remove empty paragraphs inside cells
+        foreach ($xpath->query('.//w:tc', $tbl) as $tc) {
+            if (!$tc instanceof DOMElement) { continue; }
+            $cellParas = [];
+            foreach ($xpath->query('w:p', $tc) as $cp) {
+                if ($cp instanceof DOMElement) { $cellParas[] = $cp; }
             }
-            $nextText = trim(preg_replace('/\s+/', ' ', $nextText) ?? $nextText);
-        }
-        if (preg_match('/^continuation\s+of\s+(table|figure|appendix)/iu', $nextText) === 1) {
-            return; // already has one
+            $nonEmpty = array_filter($cellParas, function ($cp) use ($xpath) {
+                $t = '';
+                foreach ($xpath->query('.//w:t', $cp) as $tn) { $t .= trim($tn->textContent ?? ''); }
+                return $t !== '' || $xpath->query('.//w:drawing|.//w:pict', $cp)->length > 0;
+            });
+            if (count($nonEmpty) > 0) {
+                foreach ($cellParas as $cp) {
+                    $t = '';
+                    foreach ($xpath->query('.//w:t', $cp) as $tn) { $t .= trim($tn->textContent ?? ''); }
+                    if ($t === '' && $xpath->query('.//w:drawing|.//w:pict', $cp)->length === 0
+                        && $cp->parentNode !== null) {
+                        $cp->parentNode->removeChild($cp);
+                    }
+                }
+            }
         }
 
-        // Build the label text from lastTableNumber in state
-        $tableNum = (string)$state['lastTableNumber'];
-        $label    = $tableNum !== ''
-            ? 'Continuation of Table ' . $tableNum . '...'
-            : 'Continuation of Table...';
+        // Remove empty rows
+        $allRows   = [];
+        $emptyRows = [];
+        foreach ($xpath->query('w:tr', $tbl) as $r) {
+            if ($r instanceof DOMElement) { $allRows[] = $r; }
+        }
+        foreach ($allRows as $row) {
+            $t = '';
+            foreach ($xpath->query('.//w:t', $row) as $tn) { $t .= trim($tn->textContent ?? ''); }
+            if ($t === '' && $xpath->query('.//w:drawing|.//w:pict', $row)->length === 0) {
+                $emptyRows[] = $row;
+            }
+        }
+        if (count($emptyRows) < count($allRows)) {
+            foreach ($emptyRows as $row) {
+                if ($row->parentNode !== null) { $row->parentNode->removeChild($row); }
+            }
+        }
 
-        $dom   = $tbl->ownerDocument;
+        // Remove fixed row heights and set table to full page width
+        foreach ($xpath->query('w:tr/w:trPr/w:trHeight', $tbl) as $trH) {
+            if ($trH instanceof DOMElement && $trH->parentNode) {
+                $trH->parentNode->removeChild($trH);
+            }
+        }
+        $tblPrW = $this->ensureChild($tbl, 'tblPr');
+        $this->removeChildren($tblPrW, 'tblW');
+        $tblW = $tbl->ownerDocument->createElementNS(self::W_NS, 'w:tblW');
+        $tblW->setAttributeNS(self::W_NS, 'w:type', 'pct');
+        $tblW->setAttributeNS(self::W_NS, 'w:w',    '5000');
+        $tblPrW->appendChild($tblW);
+        foreach ($xpath->query('w:tr/w:tc/w:tcPr/w:tcW', $tbl) as $tcW) {
+            if ($tcW instanceof DOMElement && $tcW->parentNode) {
+                $tcW->parentNode->removeChild($tcW);
+            }
+        }
+
+        // ── Step 1: Rebuild tblBorders — top+bottom always double ─────
+        $tblPr = $this->ensureChild($tbl, 'tblPr');
+        $this->removeChildren($tblPr, 'tblBorders');
+        $tblBorders = $tbl->ownerDocument->createElementNS(self::W_NS, 'w:tblBorders');
+        $tblPr->appendChild($tblBorders);
+
+        $makeBorder = function (string $localName, string $val, string $sz) use ($tbl, $tblBorders): void {
+            $el = $tbl->ownerDocument->createElementNS(self::W_NS, 'w:' . $localName);
+            $el->setAttributeNS(self::W_NS, 'w:val',   $val);
+            $el->setAttributeNS(self::W_NS, 'w:sz',    $sz);
+            $el->setAttributeNS(self::W_NS, 'w:space', '0');
+            $el->setAttributeNS(self::W_NS, 'w:color', '000000');
+            $tblBorders->appendChild($el);
+        };
+
+        $makeBorder('top',     'double', '4');
+        $makeBorder('left',    'none',   '0');
+        $makeBorder('bottom',  'double', '4');
+        $makeBorder('right',   'none',   '0');
+        $makeBorder('insideH', 'none',   '0');
+        $makeBorder('insideV', 'none',   '0');
+
+        // ── Step 2: Get direct rows only ──────────────────────────────
+        $rows     = $xpath->query('w:tr', $tbl);
+        $rowCount = $rows->length;
+        if ($rowCount === 0) { return; }
+
+        $firstRow = $rows->item(0);
+        $lastRow  = $rows->item($rowCount - 1);
+
+        $wNs = self::W_NS;
+
+        // ── Step 3: Wipe tcBorders on all cells EXCEPT the last row ──────────
+        // The last row's top border may be user-defined (e.g. a single line above
+        // a totals/footer row). We preserve it and handle it explicitly in Step 5.
+        foreach ($rows as $row) {
+            if (!$row instanceof DOMElement) { continue; }
+            if ($row === $lastRow) { continue; }   // handled in Step 5
+            foreach ($xpath->query('w:tc', $row) as $tc) {
+                if (!$tc instanceof DOMElement) { continue; }
+                $tcPr = $this->getChild($tc, 'tcPr');
+                if ($tcPr instanceof DOMElement) {
+                    $this->removeChildren($tcPr, 'tcBorders');
+                }
+            }
+        }
+
+        // ── Step 4: Header row — bottom single 0.5pt ──────────────────
+        if ($firstRow instanceof DOMElement) {
+            foreach ($xpath->query('w:tc', $firstRow) as $tc) {
+                if (!$tc instanceof DOMElement) { continue; }
+                $tcPr = $this->getChild($tc, 'tcPr');
+                if ($tcPr === null) {
+                    $tcPr = $tc->ownerDocument->createElementNS($wNs, 'w:tcPr');
+                    $tc->insertBefore($tcPr, $tc->firstChild);
+                }
+                $tcBdr = $tc->ownerDocument->createElementNS($wNs, 'w:tcBorders');
+                $tcPr->appendChild($tcBdr);
+                $el = $tc->ownerDocument->createElementNS($wNs, 'w:bottom');
+                $el->setAttributeNS($wNs, 'w:val',   'single');
+                $el->setAttributeNS($wNs, 'w:sz',    '4');
+                $el->setAttributeNS($wNs, 'w:space', '0');
+                $el->setAttributeNS($wNs, 'w:color', '000000');
+                $tcBdr->appendChild($el);
+            }
+        }
+
+        // ── Step 5: Footer row — preserve user top border, force double bottom ─
+        //
+        // top  : if the user already set a top border on the footer cells, keep it.
+        //        If not, write top=none to suppress tblBorders top=double inheritance.
+        //
+        // bottom=double : explicit cell-level override ensures the outer bottom
+        //                 border is always double even when Word ignores tblBorders.
+        if ($lastRow instanceof DOMElement && $rowCount > 1) {
+            foreach ($xpath->query('w:tc', $lastRow) as $tc) {
+                if (!$tc instanceof DOMElement) { continue; }
+                $tcPr = $this->getChild($tc, 'tcPr');
+                if ($tcPr === null) {
+                    $tcPr = $tc->ownerDocument->createElementNS($wNs, 'w:tcPr');
+                    $tc->insertBefore($tcPr, $tc->firstChild);
+                }
+
+                // Read existing top border before wiping (user-defined)
+                $existingTopVal = null;
+                $existingTopSz  = null;
+                $existingTopClr = null;
+                $existingTopSpc = null;
+                $oldTcBdr = $this->getChild($tcPr, 'tcBorders');
+                if ($oldTcBdr instanceof DOMElement) {
+                    foreach ($oldTcBdr->childNodes as $bdrChild) {
+                        if ($bdrChild instanceof DOMElement
+                            && $bdrChild->namespaceURI === $wNs
+                            && $bdrChild->localName === 'top'
+                        ) {
+                            $existingTopVal = $bdrChild->getAttributeNS($wNs, 'val');
+                            $existingTopSz  = $bdrChild->getAttributeNS($wNs, 'sz');
+                            $existingTopClr = $bdrChild->getAttributeNS($wNs, 'color');
+                            $existingTopSpc = $bdrChild->getAttributeNS($wNs, 'space');
+                            break;
+                        }
+                    }
+                }
+                $this->removeChildren($tcPr, 'tcBorders');
+
+                $tcBdr = $tc->ownerDocument->createElementNS($wNs, 'w:tcBorders');
+                $tcPr->appendChild($tcBdr);
+
+                // Top: restore user-defined border or suppress tblBorders inheritance
+                $elTop = $tc->ownerDocument->createElementNS($wNs, 'w:top');
+                if ($existingTopVal !== null && $existingTopVal !== '' && $existingTopVal !== 'none') {
+                    $elTop->setAttributeNS($wNs, 'w:val',   $existingTopVal);
+                    $elTop->setAttributeNS($wNs, 'w:sz',    $existingTopSz  ?: '4');
+                    $elTop->setAttributeNS($wNs, 'w:space', $existingTopSpc ?: '0');
+                    $elTop->setAttributeNS($wNs, 'w:color', $existingTopClr ?: '000000');
+                } else {
+                    $elTop->setAttributeNS($wNs, 'w:val',   'none');
+                    $elTop->setAttributeNS($wNs, 'w:sz',    '0');
+                    $elTop->setAttributeNS($wNs, 'w:space', '0');
+                    $elTop->setAttributeNS($wNs, 'w:color', 'auto');
+                }
+                $tcBdr->appendChild($elTop);
+
+                // Bottom: always explicit double to guarantee outer border
+                $elBot = $tc->ownerDocument->createElementNS($wNs, 'w:bottom');
+                $elBot->setAttributeNS($wNs, 'w:val',   'double');
+                $elBot->setAttributeNS($wNs, 'w:sz',    '4');
+                $elBot->setAttributeNS($wNs, 'w:space', '0');
+                $elBot->setAttributeNS($wNs, 'w:color', '000000');
+                $tcBdr->appendChild($elBot);
+            }
+        }
+    }
+
+    private function buildContinuationP(DOMDocument $dom, string $label): DOMElement
+    {
         $wNs   = self::W_NS;
         $contP = $dom->createElementNS($wNs, 'w:p');
-
-        // pPr
-        $pPr = $dom->createElementNS($wNs, 'w:pPr');
+        $pPr   = $dom->createElementNS($wNs, 'w:pPr');
         $contP->appendChild($pPr);
 
-        $pbBefore = $dom->createElementNS($wNs, 'w:pageBreakBefore');
-        $pPr->appendChild($pbBefore);
+        // NO pageBreakBefore here — we insert a separate zero-height page-break
+        // paragraph before this one instead (see doSplitTable / handleTableContinuation).
+        // pageBreakBefore bleeds into adjacent paragraphs; w:br does not.
 
         $jc = $dom->createElementNS($wNs, 'w:jc');
         $jc->setAttributeNS($wNs, 'w:val', 'left');
@@ -619,66 +686,540 @@ class DocxFormatterService
         $sp->setAttributeNS($wNs, 'w:afterAutospacing',  '0');
         $pPr->appendChild($sp);
 
-        // pPr/rPr: Garamond 13pt italic
-        $pPrRPr  = $dom->createElementNS($wNs, 'w:rPr');
-        $rFonts  = $dom->createElementNS($wNs, 'w:rFonts');
-        $rFonts->setAttributeNS($wNs, 'w:ascii',    'Garamond');
-        $rFonts->setAttributeNS($wNs, 'w:hAnsi',    'Garamond');
-        $rFonts->setAttributeNS($wNs, 'w:eastAsia', 'Garamond');
-        $rFonts->setAttributeNS($wNs, 'w:cs',       'Garamond');
-        $pPrRPr->appendChild($rFonts);
-        $pPrRPr->appendChild($dom->createElementNS($wNs, 'w:i'));
-        $pPrRPr->appendChild($dom->createElementNS($wNs, 'w:iCs'));
-        $szEl = $dom->createElementNS($wNs, 'w:sz');
-        $szEl->setAttributeNS($wNs, 'w:val', '26');
-        $szCs = $dom->createElementNS($wNs, 'w:szCs');
-        $szCs->setAttributeNS($wNs, 'w:val', '26');
-        $pPrRPr->appendChild($szEl);
-        $pPrRPr->appendChild($szCs);
-        $pPr->appendChild($pPrRPr);
+        // Build Garamond 13pt italic rPr
+        $makeRPr = static function () use ($dom, $wNs): DOMElement {
+            $rPr    = $dom->createElementNS($wNs, 'w:rPr');
+            $rFonts = $dom->createElementNS($wNs, 'w:rFonts');
+            $rFonts->setAttributeNS($wNs, 'w:ascii',    'Garamond');
+            $rFonts->setAttributeNS($wNs, 'w:hAnsi',    'Garamond');
+            $rFonts->setAttributeNS($wNs, 'w:eastAsia', 'Garamond');
+            $rFonts->setAttributeNS($wNs, 'w:cs',       'Garamond');
+            $rPr->appendChild($rFonts);
+            $rPr->appendChild($dom->createElementNS($wNs, 'w:i'));
+            $rPr->appendChild($dom->createElementNS($wNs, 'w:iCs'));
+            $sz = $dom->createElementNS($wNs, 'w:sz');
+            $sz->setAttributeNS($wNs, 'w:val', '26');
+            $sc = $dom->createElementNS($wNs, 'w:szCs');
+            $sc->setAttributeNS($wNs, 'w:val', '26');
+            $rPr->appendChild($sz);
+            $rPr->appendChild($sc);
+            return $rPr;
+        };
 
-        // run
-        $run    = $dom->createElementNS($wNs, 'w:r');
-        $runRPr = $dom->createElementNS($wNs, 'w:rPr');
-        $rF2    = $dom->createElementNS($wNs, 'w:rFonts');
-        $rF2->setAttributeNS($wNs, 'w:ascii',    'Garamond');
-        $rF2->setAttributeNS($wNs, 'w:hAnsi',    'Garamond');
-        $rF2->setAttributeNS($wNs, 'w:eastAsia', 'Garamond');
-        $rF2->setAttributeNS($wNs, 'w:cs',       'Garamond');
-        $runRPr->appendChild($rF2);
-        $runRPr->appendChild($dom->createElementNS($wNs, 'w:i'));
-        $runRPr->appendChild($dom->createElementNS($wNs, 'w:iCs'));
-        $sz2 = $dom->createElementNS($wNs, 'w:sz');
-        $sz2->setAttributeNS($wNs, 'w:val', '26');
-        $sC2 = $dom->createElementNS($wNs, 'w:szCs');
-        $sC2->setAttributeNS($wNs, 'w:val', '26');
-        $runRPr->appendChild($sz2);
-        $runRPr->appendChild($sC2);
-        $run->appendChild($runRPr);
+        $pPr->appendChild($makeRPr());
 
+        $run = $dom->createElementNS($wNs, 'w:r');
+        $run->appendChild($makeRPr());
         $tEl = $dom->createElementNS($wNs, 'w:t');
         $tEl->textContent = $label;
         $run->appendChild($tEl);
         $contP->appendChild($run);
 
-        // Insert immediately after the table
-        $nextSibling = $tbl->nextSibling;
-        if ($nextSibling !== null) {
-            $body->insertBefore($contP, $nextSibling);
-        } else {
-            $body->appendChild($contP);
+        return $contP;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Paragraph routing
+    // ═══════════════════════════════════════════════════════════════════
+
+    /** @param array<string, mixed> $state */
+    private function processParagraph(DOMElement $p, DOMXPath $xpath, array &$state): void
+    {
+        $text       = $this->getParagraphText($xpath, $p);
+        $normalized = $this->normalizeText($text);
+        $styleId    = $this->getParagraphStyleId($xpath, $p);
+
+        // ── Zone / state transitions ──────────────────────────────────
+        $chapterMatch    = [];
+        $isChapterLabel  = preg_match('/^chapter\s+([ivxlcdm]+|\d+)$/iu', $normalized, $chapterMatch) === 1;
+        $isReferences    = preg_match('/^references$/iu', $normalized) === 1;
+        $isAppendixLabel = preg_match('/^appendix(?:es)?(\s+[a-zA-Z0-9])?$/iu', $normalized) === 1;
+
+        // Entering chapters zone
+        if ($isChapterLabel) {
+            $state['zone']               = 'chapters';
+            $state['currentChapter']     = $this->chapterToInt($chapterMatch[1]);
+            $state['expectChapterTitle'] = true;
+            $state['isFirstParagraph']   = true;
+        } elseif ($isReferences) {
+            $state['zone']             = 'references';
+            $state['isFirstParagraph'] = true;
+        } elseif ($isAppendixLabel) {
+            // Appendices start — exit active zone, stop formatting
+            $state['zone'] = 'appendices';
+        }
+
+        // Only format chapters and references — skip everything else
+        $zone = (string)$state['zone'];
+        if ($zone !== 'chapters' && $zone !== 'references') { return; }
+
+        $hasDrawing = $xpath->query('.//w:drawing | .//w:pict', $p)->length > 0;
+
+        if ($hasDrawing && $normalized === '' && !$this->isInTable($xpath, $p)) {
+            $state['afterTable']       = false;
+            $state['isFirstParagraph'] = false;
+            $this->applyFigureParagraph($xpath, $p);
+            return;
+        }
+
+        if ($normalized === '') {
+            // In the references section, empty paragraphs are intentional blank lines
+            // between entries — give them a visible line height (11pt, 1.0×).
+            // Everywhere else collapse them to zero so they add no visual space.
+            if ((string)$state['zone'] === 'references') {
+                $this->applyReferenceEmptyLine($xpath, $p);
+            } else {
+                $this->applyEmptyParagraph($xpath, $p);
+            }
+            // Do NOT reset afterTable — empty paragraphs between a table and the
+            // first real paragraph must not consume the flag or add visual space.
+            return;
+        }
+
+        $hasNumbering = $xpath->query('./w:pPr/w:numPr', $p)->length > 0;
+        $isInTable    = $this->isInTable($xpath, $p);
+
+        $isFigureCaption = !$state['isFirstParagraph']
+            && preg_match('/^figure\s+\d+[\-\.]\d+\b/iu', $normalized) === 1
+            && mb_strlen($normalized) <= 120
+            && preg_match('/^figure\s+[\d\-\.]+\s+\w+\s+(presents|shows|describes|summarizes|lists|displays|illustrates|contains|provides|compares|indicates|reveals|demonstrates)\b/iu', $normalized) === 0;
+
+        $isTableCaption = !$state['isFirstParagraph']
+            && preg_match('/^table\s+\d+[\-\.]\d+\b/iu', $normalized) === 1
+            && mb_strlen($normalized) <= 120
+            && preg_match('/^table\s+[\d\-\.]+\s+\w+\s+(presents|shows|describes|summarizes|lists|displays|illustrates|contains|provides|compares|indicates|reveals|demonstrates)\b/iu', $normalized) === 0;
+
+        $isContinuation = preg_match(
+            '/^continuation\s+of\s+(table|figure)(\s+[\d\-\.]+)?/iu', $normalized
+        ) === 1;
+
+        $isLegend = preg_match('/^legend\s*:/iu', $normalized) === 1;
+
+        if ($styleId === 'Heading1') {
+            if ($isChapterLabel) {
+                $state['afterTable'] = false;
+                $this->applyChapterLabel($xpath, $p);
+                return;
+            }
+            if ((bool)$state['expectChapterTitle']
+                && !$hasDrawing && !$isFigureCaption && !$isTableCaption && !$hasNumbering
+            ) {
+                $state['expectChapterTitle'] = false;
+                $state['isFirstParagraph']   = true;
+                $state['afterTable']         = false;
+                $this->applyChapterTitle($xpath, $p);
+                return;
+            }
+            if ($isReferences) {
+                $state['afterTable'] = false;
+                $this->applyReferencesTitle($xpath, $p);
+                return;
+            }
+            // Any other Heading1 in chapters zone — treat as chapter title
+            $state['afterTable'] = false;
+            $this->applyChapterTitle($xpath, $p);
+            return;
+        }
+
+        if ((bool)$state['expectChapterTitle']
+            && !$hasDrawing && !$isFigureCaption && !$isTableCaption && !$hasNumbering
+        ) {
+            $state['expectChapterTitle'] = false;
+            $state['isFirstParagraph']   = true;
+            $state['afterTable']         = false;
+            $this->applyChapterTitle($xpath, $p);
+            return;
+        }
+
+        if ($isChapterLabel) {
+            $state['afterTable'] = false;
+            $this->applyChapterLabel($xpath, $p);
+            return;
+        }
+
+        if ($isReferences) {
+            $state['afterTable'] = false;
+            $this->applyReferencesTitle($xpath, $p);
+            return;
+        }
+
+        $state['isFirstParagraph'] = false;
+
+        if ($hasDrawing) {
+            $state['afterTable'] = false;
+            $this->applyFigureParagraph($xpath, $p);
+            return;
+        }
+
+        if ($isFigureCaption) {
+            $state['afterTable'] = false;
+            $this->applyFigureCaption($xpath, $p);
+            return;
+        }
+
+        if ($isTableCaption) {
+            $state['afterTable'] = false;
+            $m = [];
+            if (preg_match('/^table\s+([\d]+[\-\.][\d]+)\b/iu', $normalized, $m)) {
+                $state['lastTableNumber'] = $m[1];
+            }
+            $this->applyTableCaption($xpath, $p);
+            return;
+        }
+
+        if ($isContinuation) {
+            $this->applyContinuationLabel($xpath, $p, (string)$state['lastTableNumber']);
+            return;
+        }
+
+        if ($isLegend) {
+            $this->applyLegend($xpath, $p);
+            return;
+        }
+
+        if ($isInTable) { return; }
+
+        // In the references zone every content paragraph is a reference entry —
+        // regardless of whether it starts with [1], "1.", or has no number at all.
+        if ((string)$state['zone'] === 'references') {
+            $state['afterTable'] = false;
+            $this->applyReferenceEntry($xpath, $p);
+            return;
+        }
+
+        $currentChapter = (int)($state['currentChapter'] ?? 0);
+
+        // Helper: decide which formatter to use based on chapter and text.
+        // Chapter 2 non-Synthesis headings → italic heading (12pt bold+italic).
+        // Everything else → normal heading (13pt bold).
+        $applyCorrectHeading = function () use ($xpath, $p, $normalized, $currentChapter, $state): void {
+            if ($currentChapter === 2 && preg_match('/^synthesis\b/iu', $normalized) !== 1) {
+                $this->applyItalicHeading($xpath, $p);
+            } else {
+                $this->applyHeading($xpath, $p);
+            }
+        };
+
+        // Numbered section headings (e.g. "4.1 Identify Costs") must be checked
+        // BEFORE the hasNumbering gate — Word sometimes stores these with a numPr
+        // which would otherwise send them to applyListParagraph incorrectly.
+        if (preg_match('/^\d+\.\d+(\.\d+)*(\s+\S.*)?$/u', $normalized) === 1) {
+            $state['afterTable'] = false;
+            $applyCorrectHeading();
+            return;
+        }
+
+        // Ch4/Ch5 numbered bold objectives: if the paragraph starts with "N. ",
+        // is in chapter 4 or 5, and the runs are bold at 13pt (sz=26) — it's a heading.
+        if (in_array($currentChapter, [4, 5], true)
+            && preg_match('/^\d+\.\s+\S/u', $normalized) === 1
+            && preg_match('/^\d+\.\s+\S+\s*[—–-]/u', $normalized) === 0
+        ) {
+            $boldSz26 = false;
+            foreach ($xpath->query('.//w:r', $p) as $run) {
+                if (!$run instanceof DOMElement) { continue; }
+                if ($xpath->query('.//w:drawing|.//w:pict|.//w:instrText|.//w:fldChar', $run)->length > 0) { continue; }
+                $tEl = $run->getElementsByTagNameNS(self::W_NS, 't')->item(0);
+                if (!$tEl instanceof DOMElement || trim($tEl->textContent ?? '') === '') { continue; }
+                $rPr  = $run->getElementsByTagNameNS(self::W_NS, 'rPr')->item(0);
+                $bold = $rPr instanceof DOMElement && $rPr->getElementsByTagNameNS(self::W_NS, 'b')->length > 0;
+                $szEl = $rPr instanceof DOMElement ? $rPr->getElementsByTagNameNS(self::W_NS, 'sz')->item(0) : null;
+                $sz   = $szEl instanceof DOMElement ? $szEl->getAttributeNS(self::W_NS, 'val') : '';
+                if ($bold && $sz === '26') { $boldSz26 = true; break; }
+            }
+            if ($boldSz26) {
+                $state['afterTable'] = false;
+                $applyCorrectHeading();
+                return;
+            }
+        }
+
+        if ($hasNumbering || $styleId === 'ListParagraph') {
+            $state['afterTable'] = false;
+            $this->applyListParagraph($xpath, $p);
+            return;
+        }
+
+        if ($this->isHeadingStyleId($styleId)) {
+            $state['afterTable'] = false;
+            $applyCorrectHeading();
+            return;
+        }
+
+        // Determine if this paragraph is any kind of heading.
+        // isItalicHeading includes Pattern D (numbered bold objectives) which only
+        // applies in chapters 4 and 5 — in all other chapters those are list items.
+        $looksLikeItalic  = in_array($currentChapter, [2, 4, 5], true)
+                            && $this->isItalicHeading($xpath, $p, $normalized);
+        $looksLikeHeading = $looksLikeItalic || $this->isHeading($xpath, $p, $normalized);
+
+        if ($looksLikeHeading) {
+            $state['afterTable'] = false;
+            $applyCorrectHeading();
+            return;
+        }
+
+        $beforeSpacing       = (bool)$state['afterTable'] ? 240 : 0;
+        $state['afterTable'] = false;
+        $this->applyBodyParagraph($xpath, $p, $beforeSpacing);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Table processing
+    // ═══════════════════════════════════════════════════════════════════
+
+    /** @param array<string, mixed> $state */
+    private function processTable(DOMElement $tbl, DOMXPath $xpath, array &$state): void
+    {
+        $zone = (string)($state['zone'] ?? '');
+        if ($zone !== 'chapters' && $zone !== 'references') { return; }
+
+        // ── Remove empty paragraphs inside cells ─────────────────────────────
+        foreach ($xpath->query('.//w:tc', $tbl) as $tc) {
+            if (!$tc instanceof DOMElement) { continue; }
+            $cellParas = [];
+            foreach ($xpath->query('w:p', $tc) as $cp) {
+                if ($cp instanceof DOMElement) { $cellParas[] = $cp; }
+            }
+            // Keep at least one paragraph per cell (Word requires it)
+            $nonEmpty = array_filter($cellParas, function ($cp) use ($xpath) {
+                $t = '';
+                foreach ($xpath->query('.//w:t', $cp) as $tn) { $t .= trim($tn->textContent ?? ''); }
+                $hasDrawing = $xpath->query('.//w:drawing|.//w:pict', $cp)->length > 0;
+                return $t !== '' || $hasDrawing;
+            });
+            if (count($nonEmpty) > 0) {
+                foreach ($cellParas as $cp) {
+                    $t = '';
+                    foreach ($xpath->query('.//w:t', $cp) as $tn) { $t .= trim($tn->textContent ?? ''); }
+                    $hasDrawing = $xpath->query('.//w:drawing|.//w:pict', $cp)->length > 0;
+                    if ($t === '' && !$hasDrawing && $cp->parentNode !== null) {
+                        $cp->parentNode->removeChild($cp);
+                    }
+                }
+            }
+        }
+
+        // ── Remove empty rows (all cells empty after paragraph cleanup) ────────
+        $allRows = [];
+        foreach ($xpath->query('w:tr', $tbl) as $r) {
+            if ($r instanceof DOMElement) { $allRows[] = $r; }
+        }
+        $emptyRows = [];
+        foreach ($allRows as $row) {
+            $text = '';
+            foreach ($xpath->query('.//w:t', $row) as $tn) { $text .= trim($tn->textContent ?? ''); }
+            $hasDrawing = $xpath->query('.//w:drawing|.//w:pict', $row)->length > 0;
+            if ($text === '' && !$hasDrawing) { $emptyRows[] = $row; }
+        }
+        // Never remove all rows
+        if (count($emptyRows) < count($allRows)) {
+            foreach ($emptyRows as $row) {
+                if ($row->parentNode !== null) { $row->parentNode->removeChild($row); }
+            }
+        }
+
+        // ── De-float: remove ALL positioning properties, force inline ─────────
+        $this->deFloatTable($tbl);
+
+        // ── Compress: remove fixed row heights so rows shrink to content ─────
+        foreach ($xpath->query('w:tr/w:trPr/w:trHeight', $tbl) as $trH) {
+            if ($trH instanceof DOMElement && $trH->parentNode) {
+                $trH->parentNode->removeChild($trH);
+            }
+        }
+
+        // ── Set table to full page width (9360 twips = 6.5 inches) ───────────
+        $tblPrForWidth = $this->ensureChild($tbl, 'tblPr');
+        $this->removeChildren($tblPrForWidth, 'tblW');
+        $tblW = $tbl->ownerDocument->createElementNS(self::W_NS, 'w:tblW');
+        $tblW->setAttributeNS(self::W_NS, 'w:type', 'pct');
+        $tblW->setAttributeNS(self::W_NS, 'w:w',    '5000');
+        $tblPrForWidth->appendChild($tblW);
+
+        // Remove fixed cell widths so columns auto-distribute across full width
+        foreach ($xpath->query('w:tr/w:tc/w:tcPr/w:tcW', $tbl) as $tcW) {
+            if ($tcW instanceof DOMElement && $tcW->parentNode) {
+                $tcW->parentNode->removeChild($tcW);
+            }
+        }
+
+        if (isset($this->rules['borders'])) {
+            $this->applyTableBordersSpec($tbl, $xpath);
+        }
+
+        foreach ($xpath->query('.//w:tc', $tbl) as $tc) {
+            if (!$tc instanceof DOMElement) { continue; }
+            foreach ($xpath->query('.//w:p', $tc) as $p) {
+                if (!$p instanceof DOMElement) { continue; }
+                $isNumbered = $xpath->query('./w:pPr/w:numPr', $p)->length > 0;
+                if (isset($this->rules['alignment'])) {
+                    $this->writePAlignment($p, $isNumbered ? 'both' : 'center');
+                }
+                // before=0, after=0, line=240 — no extra spacing inside cells
+                if (isset($this->rules['spacing'])) {
+                    $this->writePSpacing($p, 0, 0, 240);
+                }
+                if (isset($this->rules['indentation'])) {
+                    $this->writePIndent($p, 0);
+                }
+                $this->writeRuns($xpath, $p, 'Arial', 20, false, false);
+                $this->writePPrRPr($p, 'Arial', 20, false, false);
+            }
         }
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // Paragraph formatters
+    // ═══════════════════════════════════════════════════════════════════
+
     private function applyEmptyParagraph(DOMXPath $xpath, DOMElement $p): void
     {
-        $pPr = $this->getChild($p, 'pPr');
-        if ($pPr instanceof DOMElement) {
-            $this->removeChildren($pPr, 'pStyle');
+        $pPr = $this->ensurePPr($p);
+        foreach (['pStyle', 'ind', 'spacing', 'jc', 'rPr', 'widowControl',
+                  'pageBreakBefore', 'keepNext', 'keepLines', 'outlineLvl',
+                  'contextualSpacing', 'snapToGrid'] as $tag) {
+            $this->removeChildren($pPr, $tag);
         }
-        $this->writePPrRPr($p, 'Garamond', 24, false, false);
-        if ($xpath->query('.//w:r', $p)->length > 0) {
-            $this->writeRuns($xpath, $p, 'Garamond', 24, false, false);
+        // Use sz=2 (1pt) so the line collapses to near-zero height.
+        // before=0/after=0 kills paragraph spacing.
+        $sp = $p->ownerDocument->createElementNS(self::W_NS, 'w:spacing');
+        $sp->setAttributeNS(self::W_NS, 'w:before',            '0');
+        $sp->setAttributeNS(self::W_NS, 'w:after',             '0');
+        $sp->setAttributeNS(self::W_NS, 'w:line',              '20');
+        $sp->setAttributeNS(self::W_NS, 'w:lineRule',          'exact');
+        $sp->setAttributeNS(self::W_NS, 'w:beforeAutospacing', '0');
+        $sp->setAttributeNS(self::W_NS, 'w:afterAutospacing',  '0');
+        $pPr->appendChild($sp);
+        $cs = $p->ownerDocument->createElementNS(self::W_NS, 'w:contextualSpacing');
+        $cs->setAttributeNS(self::W_NS, 'w:val', '1');
+        $pPr->appendChild($cs);
+        // Paragraph-mark rPr: sz=2 so the line box itself is 1pt tall
+        $rPr    = $p->ownerDocument->createElementNS(self::W_NS, 'w:rPr');
+        $rFonts = $p->ownerDocument->createElementNS(self::W_NS, 'w:rFonts');
+        foreach (['w:ascii','w:hAnsi','w:eastAsia','w:cs'] as $attr) {
+            $rFonts->setAttributeNS(self::W_NS, $attr, 'Garamond');
+        }
+        $rPr->appendChild($rFonts);
+        $szEl = $p->ownerDocument->createElementNS(self::W_NS, 'w:sz');
+        $szEl->setAttributeNS(self::W_NS, 'w:val', '2');
+        $szCs = $p->ownerDocument->createElementNS(self::W_NS, 'w:szCs');
+        $szCs->setAttributeNS(self::W_NS, 'w:val', '2');
+        $rPr->appendChild($szEl);
+        $rPr->appendChild($szCs);
+        $pPr->appendChild($rPr);
+        // Also collapse any existing runs
+        foreach ($xpath->query('.//w:r', $p) as $run) {
+            if (!$run instanceof DOMElement) { continue; }
+            $this->removeChildren($run, 'rPr');
+            $rr    = $p->ownerDocument->createElementNS(self::W_NS, 'w:rPr');
+            $szR   = $p->ownerDocument->createElementNS(self::W_NS, 'w:sz');
+            $szR->setAttributeNS(self::W_NS, 'w:val', '2');
+            $szCsR = $p->ownerDocument->createElementNS(self::W_NS, 'w:szCs');
+            $szCsR->setAttributeNS(self::W_NS, 'w:val', '2');
+            $rr->appendChild($szR);
+            $rr->appendChild($szCsR);
+            $run->insertBefore($rr, $run->firstChild);
+        }
+    }
+
+    private function applyReferenceEmptyLine(DOMXPath $xpath, DOMElement $p): void
+    {
+        // Visible blank line between reference entries — 11pt Garamond, 1.0× line spacing,
+        // no before/after spacing. Matches the entry line height exactly.
+        $pPr = $this->ensurePPr($p);
+        foreach (['pStyle', 'ind', 'spacing', 'jc', 'rPr', 'widowControl',
+                  'pageBreakBefore', 'keepNext', 'keepLines', 'outlineLvl',
+                  'contextualSpacing', 'snapToGrid'] as $tag) {
+            $this->removeChildren($pPr, $tag);
+        }
+        $sp = $p->ownerDocument->createElementNS(self::W_NS, 'w:spacing');
+        $sp->setAttributeNS(self::W_NS, 'w:before',            '0');
+        $sp->setAttributeNS(self::W_NS, 'w:after',             '0');
+        $sp->setAttributeNS(self::W_NS, 'w:line',              '240');
+        $sp->setAttributeNS(self::W_NS, 'w:lineRule',          'auto');
+        $sp->setAttributeNS(self::W_NS, 'w:beforeAutospacing', '0');
+        $sp->setAttributeNS(self::W_NS, 'w:afterAutospacing',  '0');
+        $pPr->appendChild($sp);
+        $rPr    = $p->ownerDocument->createElementNS(self::W_NS, 'w:rPr');
+        $rFonts = $p->ownerDocument->createElementNS(self::W_NS, 'w:rFonts');
+        foreach (['w:ascii', 'w:hAnsi', 'w:eastAsia', 'w:cs'] as $attr) {
+            $rFonts->setAttributeNS(self::W_NS, $attr, 'Garamond');
+        }
+        $rPr->appendChild($rFonts);
+        $szEl = $p->ownerDocument->createElementNS(self::W_NS, 'w:sz');
+        $szEl->setAttributeNS(self::W_NS, 'w:val', '22');
+        $szCs = $p->ownerDocument->createElementNS(self::W_NS, 'w:szCs');
+        $szCs->setAttributeNS(self::W_NS, 'w:val', '22');
+        $rPr->appendChild($szEl);
+        $rPr->appendChild($szCs);
+        $pPr->appendChild($rPr);
+    }
+
+    private function buildZeroHeightPageBreakP(DOMDocument $dom): DOMElement
+    {
+        // A paragraph that only contains a page-break run and has zero visual
+        // height. Using w:br type="page" inside a run is self-contained —
+        // unlike w:pageBreakBefore it does NOT bleed into the next paragraph.
+        $wNs = self::W_NS;
+        $p   = $dom->createElementNS($wNs, 'w:p');
+        $pPr = $dom->createElementNS($wNs, 'w:pPr');
+        $p->appendChild($pPr);
+        $sp = $dom->createElementNS($wNs, 'w:spacing');
+        $sp->setAttributeNS($wNs, 'w:before',   '0');
+        $sp->setAttributeNS($wNs, 'w:after',    '0');
+        $sp->setAttributeNS($wNs, 'w:line',     '20');
+        $sp->setAttributeNS($wNs, 'w:lineRule', 'exact');
+        $pPr->appendChild($sp);
+        $rPr  = $dom->createElementNS($wNs, 'w:rPr');
+        $szEl = $dom->createElementNS($wNs, 'w:sz');
+        $szEl->setAttributeNS($wNs, 'w:val', '2');
+        $szCs = $dom->createElementNS($wNs, 'w:szCs');
+        $szCs->setAttributeNS($wNs, 'w:val', '2');
+        $rPr->appendChild($szEl);
+        $rPr->appendChild($szCs);
+        $pPr->appendChild($rPr);
+        $run = $dom->createElementNS($wNs, 'w:r');
+        $br  = $dom->createElementNS($wNs, 'w:br');
+        $br->setAttributeNS($wNs, 'w:type', 'page');
+        $run->appendChild($br);
+        $p->appendChild($run);
+        return $p;
+    }
+
+    private function ensureTrailingPeriod(DOMXPath $xpath, DOMElement $p): void
+    {
+        // Find the last text run and append a period if it doesn't already end with one.
+        $lastTEl = null;
+        foreach ($xpath->query('.//w:r[not(.//w:drawing) and not(.//w:pict)]/w:t', $p) as $t) {
+            $lastTEl = $t;
+        }
+        if ($lastTEl === null) { return; }
+        $text = $lastTEl->textContent ?? '';
+        if (!str_ends_with(rtrim($text), '.')) {
+            $lastTEl->textContent = rtrim($text) . '.';
+        }
+    }
+
+    private function stripLeadingTabRuns(DOMXPath $xpath, DOMElement $p): void
+    {
+        // Remove any leading runs that contain only a w:tab element.
+        // These are manual tab characters the author used for indentation
+        // before we apply proper firstLine indent — leaving them causes
+        // double indentation.
+        foreach ($xpath->query('./w:r', $p) as $run) {
+            if (!$run instanceof DOMElement) { break; }
+            // If this run has a w:tab and no w:t text content, remove it
+            $hasTab  = $xpath->query('./w:tab', $run)->length > 0;
+            $hasTxt  = $xpath->query('./w:t',   $run)->length > 0;
+            $hasOther = $xpath->query(
+                './w:drawing|./w:pict|./w:instrText|./w:fldChar|./w:br', $run
+            )->length > 0;
+            if ($hasTab && !$hasTxt && !$hasOther) {
+                $run->parentNode->removeChild($run);
+            } else {
+                break; // stop at the first non-tab run
+            }
         }
     }
 
@@ -741,6 +1282,8 @@ class DocxFormatterService
 
     private function applyReferencesTitle(DOMXPath $xpath, DOMElement $p): void
     {
+        // Spec: Garamond 14pt (sz=28), bold, uppercase, centered,
+        //       3.0 line spacing (line=720), 0 before, 0 after, no indent.
         $this->stripAll($xpath, $p);
         $this->uppercaseParagraphText($xpath, $p);
         if (isset($this->rules['alignment']))   { $this->writePAlignment($p, 'center'); }
@@ -750,9 +1293,16 @@ class DocxFormatterService
         $this->writePPrRPr($p, 'Garamond', 28, true, false);
     }
 
-    private function applyHeading2(DOMXPath $xpath, DOMElement $p): void
+    /**
+     * Unified heading formatter.
+     * Spec: Garamond 13pt (sz=26), bold, left-aligned, 2.0 line spacing (480),
+     *       0 before, 0 after, first-line indent = 0.
+     * Covers H2–H9 style headings, bold-only headings, and bold+italic inline headings.
+     */
+    private function applyHeading(DOMXPath $xpath, DOMElement $p): void
     {
         $this->stripAll($xpath, $p);
+        $this->stripLeadingTabRuns($xpath, $p);
         if (isset($this->rules['alignment']))   { $this->writePAlignment($p, 'left'); }
         if (isset($this->rules['indentation'])) { $this->writePIndent($p, 0); }
         if (isset($this->rules['spacing']))     { $this->writePSpacing($p, 0, 0, 480); }
@@ -760,48 +1310,58 @@ class DocxFormatterService
         $this->writePPrRPr($p, 'Garamond', 26, true, false);
     }
 
-    private function applyInlineHeading(DOMXPath $xpath, DOMElement $p): void
+    // Aliases so all existing call-sites resolve to the unified spec
+    private function applyHeading2(DOMXPath $xpath, DOMElement $p): void      { $this->applyHeading($xpath, $p); }
+    private function applyBoldHeading(DOMXPath $xpath, DOMElement $p): void   { $this->applyHeading($xpath, $p); }
+
+    /**
+     * Italic heading formatter — Chapter 2 inline headings and Chapter 4/5 bold+italic headings.
+     * Spec: Garamond 12pt (sz=24), bold, italic, left-aligned, 2.0 line spacing (480),
+     *       0 before, 0 after, first-line indent = 0.
+     */
+    private function applyItalicHeading(DOMXPath $xpath, DOMElement $p): void
     {
         $this->stripAll($xpath, $p);
+        $this->stripLeadingTabRuns($xpath, $p);
         if (isset($this->rules['alignment']))   { $this->writePAlignment($p, 'left'); }
-        if (isset($this->rules['indentation'])) { $this->writePIndent($p, 0); }
         if (isset($this->rules['spacing']))     { $this->writePSpacing($p, 0, 0, 480); }
+
+        // Force all indent attributes to zero explicitly
+        $pPr = $this->ensurePPr($p);
+        $this->removeChildren($pPr, 'ind');
+        $ind = $p->ownerDocument->createElementNS(self::W_NS, 'w:ind');
+        $ind->setAttributeNS(self::W_NS, 'w:firstLine', '0');
+        $ind->setAttributeNS(self::W_NS, 'w:hanging',   '0');
+        $ind->setAttributeNS(self::W_NS, 'w:left',      '0');
+        $ind->setAttributeNS(self::W_NS, 'w:right',     '0');
+        $pPr->appendChild($ind);
+
         $this->writeRuns($xpath, $p, 'Garamond', 24, true, true);
         $this->writePPrRPr($p, 'Garamond', 24, true, true);
     }
 
-    private function applyBoldHeading(DOMXPath $xpath, DOMElement $p): void
-    {
-        $this->stripAll($xpath, $p);
-        if (isset($this->rules['alignment']))   { $this->writePAlignment($p, 'left'); }
-        if (isset($this->rules['indentation'])) { $this->writePIndent($p, 0); }
-        if (isset($this->rules['spacing']))     { $this->writePSpacing($p, 0, 0, 480); }
-        $this->writeRuns($xpath, $p, 'Garamond', 26, true, false);
-        $this->writePPrRPr($p, 'Garamond', 26, true, false);
-    }
+    // Keep old alias pointing to italic variant (was the original applyInlineHeading behaviour)
+    private function applyInlineHeading(DOMXPath $xpath, DOMElement $p): void { $this->applyItalicHeading($xpath, $p); }
 
-    /**
-     * Body paragraph — and the "closing paragraph" after a table.
-     *
-     * When $beforeSpacing = 240 (12pt), this is the first real paragraph
-     * after a table (after any legend/continuation that may have followed).
-     * null bold/italic preserves inline bold terms on any page.
-     */
     private function applyBodyParagraph(DOMXPath $xpath, DOMElement $p, int $beforeSpacing = 0): void
     {
         $this->stripAll($xpath, $p);
+        $this->stripLeadingTabRuns($xpath, $p);
         if (isset($this->rules['alignment']))   { $this->writePAlignment($p, 'both'); }
         if (isset($this->rules['indentation'])) { $this->writePIndent($p, 720); }
         if (isset($this->rules['spacing']))     { $this->writePSpacing($p, $beforeSpacing, 0, 480); }
         $this->removePBdr($p);
-        // null = preserve per-run bold/italic so "Term. definition..." works everywhere
         $this->writeRuns($xpath, $p, 'Garamond', 24, null, null);
         $this->writePPrRPr($p, 'Garamond', 24, false, false);
     }
 
     private function applyReferenceEntry(DOMXPath $xpath, DOMElement $p): void
     {
+        // Spec: Garamond 11pt (sz=22), justified, hanging indent 1.27cm (720 twips),
+        //       1.0 line spacing (line=240), 0 before, 0 after.
+        // The one blank line between entries is an actual empty paragraph the author typed.
         $this->stripAll($xpath, $p);
+        $this->stripLeadingTabRuns($xpath, $p);
         if (isset($this->rules['alignment']))   { $this->writePAlignment($p, 'both'); }
         if (isset($this->rules['indentation'])) { $this->writePHangingIndent($p, 720, 720); }
         if (isset($this->rules['spacing']))     { $this->writePSpacing($p, 0, 0, 240); }
@@ -811,19 +1371,24 @@ class DocxFormatterService
 
     private function applyListParagraph(DOMXPath $xpath, DOMElement $p): void
     {
-        if (isset($this->rules['alignment'])) { $this->writePAlignment($p, 'both'); }
-        if (isset($this->rules['spacing']))   { $this->writePSpacing($p, 0, 0, 480); }
-        $this->writeRuns($xpath, $p, 'Garamond', 26, false, false);
-        $this->writePPrRPr($p, 'Garamond', 26, false, false);
+        // Body-level list items: Garamond 12pt, 2.0 line spacing, justified.
+        // Keep numPr (list numbering) — do not strip it.
+        $pPr = $this->getChild($p, 'pPr');
+        if ($pPr instanceof DOMElement) {
+            foreach (['pStyle', 'rPr', 'widowControl', 'ind', 'spacing',
+                      'jc', 'pageBreakBefore', 'keepNext', 'keepLines'] as $tag) {
+                $this->removeChildren($pPr, $tag);
+            }
+        }
+        $this->stripLeadingTabRuns($xpath, $p);
+        if (isset($this->rules['alignment']))   { $this->writePAlignment($p, 'both'); }
+        if (isset($this->rules['spacing']))     { $this->writePSpacing($p, 0, 0, 480); }
+        $this->writeRuns($xpath, $p, 'Garamond', 24, false, false);
+        $this->writePPrRPr($p, 'Garamond', 24, false, false);
     }
 
-    /**
-     * Figure paragraph — inline drawing, centered, 1.0 line, 0 before/after, 3pt border.
-     * Converts wp:anchor to wp:inline.
-     */
     private function applyFigureParagraph(DOMXPath $xpath, DOMElement $p): void
     {
-        // ── 1. Rebuild pPr ────────────────────────────────────────────
         $pPr = $this->ensurePPr($p);
         foreach (['pStyle', 'widowControl', 'jc', 'ind', 'spacing', 'pBdr', 'rPr'] as $tag) {
             $this->removeChildren($pPr, $tag);
@@ -863,7 +1428,6 @@ class DocxFormatterService
         $rPr->appendChild($szCs);
         $pPr->appendChild($rPr);
 
-        // ── 2. Convert wp:anchor to wp:inline ────────────────────────
         $WP_NS = 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing';
         foreach ($xpath->query('.//w:drawing', $p) as $drawing) {
             if (!$drawing instanceof DOMElement) { continue; }
@@ -911,7 +1475,6 @@ class DocxFormatterService
             $drawing->replaceChild($inline, $anchor);
         }
 
-        // ── 3. Set 3pt solid black border on image shape ─────────────
         $A_NS    = 'http://schemas.openxmlformats.org/drawingml/2006/main';
         $lnNodes = $xpath->query(
             './/w:drawing//*[local-name()="ln"] | .//w:pict//*[local-name()="ln"]', $p
@@ -942,14 +1505,11 @@ class DocxFormatterService
         if (isset($this->rules['indentation'])) { $this->writePIndent($p, 0); }
         if (isset($this->rules['spacing']))     { $this->writePSpacing($p, 0, 0, 480); }
         $this->removePBdr($p);
+        $this->ensureTrailingPeriod($xpath, $p);
         $this->writeRuns($xpath, $p, 'Garamond', 24, false, false);
         $this->writePPrRPr($p, 'Garamond', 24, false, false);
     }
 
-    /**
-     * Table caption — appears on top of the table.
-     * Garamond 12pt (sz=24), left aligned, 1.0 line spacing (240), 0 before/after.
-     */
     private function applyTableCaption(DOMXPath $xpath, DOMElement $p): void
     {
         $this->stripAll($xpath, $p);
@@ -957,17 +1517,11 @@ class DocxFormatterService
         if (isset($this->rules['indentation'])) { $this->writePIndent($p, 0); }
         if (isset($this->rules['spacing']))     { $this->writePSpacing($p, 0, 0, 240); }
         $this->removePBdr($p);
+        $this->ensureTrailingPeriod($xpath, $p);
         $this->writeRuns($xpath, $p, 'Garamond', 24, false, false);
         $this->writePPrRPr($p, 'Garamond', 24, false, false);
     }
 
-    /**
-     * Legend — appears right after the table.
-     * Garamond 11pt (sz=22), left aligned, 1.0 line spacing (240), 0 before/after.
-     *
-     * Does NOT reset afterTable. The first real body paragraph after
-     * legend still receives 12pt before spacing.
-     */
     private function applyLegend(DOMXPath $xpath, DOMElement $p): void
     {
         $this->stripAll($xpath, $p);
@@ -978,39 +1532,27 @@ class DocxFormatterService
         $this->writePPrRPr($p, 'Garamond', 22, false, false);
     }
 
-    /**
-     * Continuation label — e.g. "Continuation of Table 1-1..."
-     * Garamond 13pt (sz=26), italic, left aligned, 1.0 line spacing (240), 0 before/after.
-     *
-     * Does NOT reset afterTable — same reason as applyLegend.
-     */
-    /**
-     * Continuation label — e.g. "Continuation of Table 3-2..."
-     * Garamond 13pt (sz=26), italic, left aligned, 1.0 line spacing (240), 0 before/after.
-     * Forces page break before so it always appears at the top of the continued page.
-     * Rewrites the paragraph text to the canonical format:
-     *   "Continuation of Table X-X..."
-     * Does NOT reset afterTable.
-     */
     private function applyContinuationLabel(DOMXPath $xpath, DOMElement $p, string $tableNumber = ''): void
     {
         $this->stripAll($xpath, $p);
         if (isset($this->rules['alignment']))   { $this->writePAlignment($p, 'left'); }
         if (isset($this->rules['indentation'])) { $this->writePIndent($p, 0); }
         if (isset($this->rules['spacing']))     { $this->writePSpacing($p, 0, 0, 240); }
-        if (isset($this->rules['pagination']))  { $this->writePageBreakBefore($p, true); }
 
-        // Rewrite text to canonical format: "Continuation of Table X-X..."
+        // Remove any w:br type="page" runs left from old page-break approach
+        foreach ($xpath->query('.//w:br[@w:type="page"]', $p) as $br) {
+            if ($br->parentNode instanceof DOMElement) {
+                $br->parentNode->parentNode?->removeChild($br->parentNode);
+            }
+        }
+
         if ($tableNumber !== '') {
             $canonical = 'Continuation of Table ' . $tableNumber . '...';
-            // Remove all existing text runs and replace with a single clean run
-            $toRemove = [];
+            $toRemove  = [];
             foreach ($xpath->query('.//w:r', $p) as $run) {
-                if (!$run instanceof DOMElement) { continue; }
-                $toRemove[] = $run;
+                if ($run instanceof DOMElement) { $toRemove[] = $run; }
             }
             foreach ($toRemove as $run) { $run->parentNode?->removeChild($run); }
-
             $run = $p->ownerDocument->createElementNS(self::W_NS, 'w:r');
             $tEl = $p->ownerDocument->createElementNS(self::W_NS, 'w:t');
             $tEl->textContent = $canonical;
@@ -1026,87 +1568,235 @@ class DocxFormatterService
     // Classification helpers
     // ═══════════════════════════════════════════════════════════════════
 
-    private function isInlineHeading(DOMXPath $xpath, DOMElement $p, string $text): bool
+    // ─────────────────────────────────────────────────────────────────
+    // Heading detection
+    // ─────────────────────────────────────────────────────────────────
+
+    /**
+     * Returns true when the paragraph's named style is any heading level H2–H9.
+     * Word uses several naming conventions for the same logical style, so we
+     * check all of them.
+     */
+    private function isHeadingStyleId(string $styleId): bool
+    {
+        if ($styleId === '') { return false; }
+        // Canonical Word names: Heading2 … Heading9
+        if (preg_match('/^Heading[2-9]$/i', $styleId) === 1) { return true; }
+        // Short numeric aliases Word sometimes stores: 2 … 9
+        if (preg_match('/^[2-9]$/', $styleId) === 1) { return true; }
+        // Lower-case variants: heading2 … heading9
+        if (preg_match('/^heading[2-9]$/i', $styleId) === 1) { return true; }
+        return false;
+    }
+
+    /**
+     * Heuristic heading detection for paragraphs that carry no heading style.
+     *
+     * A paragraph is treated as a heading when it passes ALL of these gates:
+     *   1. Not empty, not ending in sentence-ending punctuation.
+     *   2. No first-line indent (body paragraphs are indented).
+     *   3. Not a known special prefix (figure / table / chapter / appendix /
+     *      continuation / legend / reference entries).
+     *   4. ≤ 150 characters (headings are short).
+     *   5. Matches one of:
+     *        a. Numbered-section pattern  — "1.", "1.1", "1.1.1", "2.3.4" …
+     *           optionally followed by text, e.g. "2.1 Background"
+     *        b. Bold-majority             — ≥ 60 % of text runs are bold
+     *        c. Bold+italic               — at least one bold+italic run and
+     *                                       ≤ 20 % bold-only runs
+     */
+    private function isHeading(DOMXPath $xpath, DOMElement $p, string $text): bool
     {
         if ($text === '') { return false; }
-        if ($this->getPFirstLineIndent($p) > 0) { return false; }
+        // Gate 1: no sentence-ending punctuation
         if (preg_match('/[.!?]$/u', $text) === 1) { return false; }
-        if (preg_match('/^(figure|fig\.?|table|chapter|appendix|continuation)\b/iu', $text) === 1) {
-            return false;
-        }
+        // Gate 3: exclude known special prefixes
+        if (preg_match(
+            '/^(figure|fig\.?|table|chapter|appendix|continuation|legend)\b/iu', $text
+        ) === 1) { return false; }
+        // Exclude bracket-style reference entries "[1]"
+        if (preg_match('/^\[\d+\]/u', $text) === 1) { return false; }
+        // Gate 4: length cap
         if (mb_strlen($text) > 150) { return false; }
 
+        // Gate 5a: numbered section headings — checked BEFORE the indent gate
+        // because authors often leave the paragraph indent on these.
+        // Form A: "4.1", "2.3 Background", "1.2.3 Overview"
+        if (preg_match('/^\d+\.\d+(\.\d+)*(\s+\S.*)?$/u', $text) === 1) { return true; }
+
+        // Gate 2: no first-line indent (only applied to non-numbered headings)
+        if ($this->getPFirstLineIndent($p) > 0) { return false; }
+
+        // Gate 5b / 5c: bold-majority or bold+italic
         $runs  = $xpath->query('.//w:r', $p);
         $total = $runs->length;
         if ($total === 0) { return false; }
 
+        $textRunsTotal  = 0;
+        $textRunsBold   = 0;
         $boldItalicRuns = 0;
         $boldOnlyRuns   = 0;
+
         foreach ($runs as $run) {
             if (!$run instanceof DOMElement) { continue; }
-            $rPr = $run->getElementsByTagNameNS(self::W_NS, 'rPr')->item(0);
+            // Skip drawing / field runs
+            if ($xpath->query(
+                './/w:drawing|.//w:pict|.//w:instrText|.//w:fldChar', $run
+            )->length > 0) { continue; }
+            $tEl = $run->getElementsByTagNameNS(self::W_NS, 't')->item(0);
+            if (!$tEl instanceof DOMElement || trim($tEl->textContent ?? '') === '') { continue; }
+
+            $textRunsTotal++;
+            $rPr       = $run->getElementsByTagNameNS(self::W_NS, 'rPr')->item(0);
             $hasBold   = $rPr instanceof DOMElement
                 && $rPr->getElementsByTagNameNS(self::W_NS, 'b')->length > 0;
             $hasItalic = $rPr instanceof DOMElement
                 && $rPr->getElementsByTagNameNS(self::W_NS, 'i')->length > 0;
-            if ($hasBold && $hasItalic) { $boldItalicRuns++; }
-            if ($hasBold && !$hasItalic) { $boldOnlyRuns++; }
-        }
 
-        return $boldItalicRuns > 0 && ($boldOnlyRuns / $total) <= 0.2;
-    }
-
-    /**
-     * Detects a standalone bold heading (e.g. "Operational Terms").
-     *
-     * "Term. definition..." pattern is excluded: if bold runs appear before
-     * non-bold runs in the same paragraph, returns false so applyBodyParagraph
-     * handles it with null bold — preserving the bold term on any page.
-     */
-    private function isBoldHeading(DOMXPath $xpath, DOMElement $p, string $text): bool
-    {
-        if ($text === '') { return false; }
-        if ($this->getPFirstLineIndent($p) > 0) { return false; }
-        if (preg_match('/[.!?]$/u', $text) === 1) { return false; }
-        if (preg_match('/^(figure|fig\.?|table|chapter|appendix|continuation)\b/iu', $text) === 1) {
-            return false;
-        }
-        if (mb_strlen($text) > 150) { return false; }
-        if ($xpath->query('.//w:r/w:rPr/w:i', $p)->length > 0) { return false; }
-
-        $runs = $xpath->query('.//w:r', $p);
-        if ($runs->length === 0) { return false; }
-
-        $textRunsTotal     = 0;
-        $textRunsBold      = 0;
-        $foundNonBold      = false;
-        $boldBeforeNonBold = 0;
-
-        foreach ($runs as $run) {
-            if (!$run instanceof DOMElement) { continue; }
-            $tEl = $run->getElementsByTagNameNS(self::W_NS, 't')->item(0);
-            if (!$tEl instanceof DOMElement) { continue; }
-            if (trim($tEl->textContent ?? '') === '') { continue; }
-            $textRunsTotal++;
-            $rPr    = $run->getElementsByTagNameNS(self::W_NS, 'rPr')->item(0);
-            $isBold = $rPr instanceof DOMElement
-                && $rPr->getElementsByTagNameNS(self::W_NS, 'b')->length > 0;
-            if ($isBold) {
-                $textRunsBold++;
-                if (!$foundNonBold) { $boldBeforeNonBold++; }
-            } else {
-                $foundNonBold = true;
-            }
+            if ($hasBold && $hasItalic) { $boldItalicRuns++; $textRunsBold++; }
+            elseif ($hasBold)           { $boldOnlyRuns++;   $textRunsBold++; }
         }
 
         if ($textRunsTotal === 0) { return false; }
 
-        // "Bold Term. plain definition" — route to body, not heading.
-        if ($foundNonBold && $boldBeforeNonBold > 0 && $textRunsBold < $textRunsTotal) {
-            return false;
+        // 5b: bold-majority, not italic (pure bold headings — Ch4/Ch5 numbered/single-word)
+        if (($textRunsBold / $textRunsTotal) >= 0.6 && $boldItalicRuns === 0) { return true; }
+
+        // 5d: font-size 13pt pattern — majority of runs explicitly sz=26
+        $sz13Runs = 0;
+        foreach ($runs as $run) {
+            if (!$run instanceof DOMElement) { continue; }
+            if ($xpath->query(
+                './/w:drawing|.//w:pict|.//w:instrText|.//w:fldChar', $run
+            )->length > 0) { continue; }
+            $tEl = $run->getElementsByTagNameNS(self::W_NS, 't')->item(0);
+            if (!$tEl instanceof DOMElement || trim($tEl->textContent ?? '') === '') { continue; }
+            $rPr  = $run->getElementsByTagNameNS(self::W_NS, 'rPr')->item(0);
+            $szEl = $rPr instanceof DOMElement
+                ? $rPr->getElementsByTagNameNS(self::W_NS, 'sz')->item(0)
+                : null;
+            if ($szEl instanceof DOMElement
+                && $szEl->getAttributeNS(self::W_NS, 'val') === '26'
+            ) { $sz13Runs++; }
+        }
+        if ($sz13Runs === 0) {
+            $pPrSz = $xpath->query('./w:pPr/w:rPr/w:sz', $p)->item(0);
+            if ($pPrSz instanceof DOMElement
+                && $pPrSz->getAttributeNS(self::W_NS, 'val') === '26'
+            ) { return true; }
+        }
+        if ($textRunsTotal > 0 && ($sz13Runs / $textRunsTotal) >= 0.6) { return true; }
+
+        return false;
+    }
+
+    /**
+     * Detects bold+italic headings at 12pt — Chapter 2 inline headings and
+     * Chapter 4 / 5 highlighted headings.
+     *
+     * A paragraph qualifies when it passes the shared gates (same as isHeading)
+     * AND one of:
+     *   A) Majority of text runs are bold+italic (catches Ch2 inline style)
+     *   B) Majority of text runs are bold+italic AND font size is 12pt (sz=24)
+     *      (catches Ch4/Ch5 manually-sized headings)
+     *   C) Paragraph-mark rPr declares sz=24 (whole-paragraph size inheritance)
+     */
+    private function isItalicHeading(DOMXPath $xpath, DOMElement $p, string $text): bool
+    {
+        if ($text === '') { return false; }
+
+        // ── Pattern D (checked first, bypasses period + indent gates) ────────
+        // Numbered bold objectives: "1. To develop...", "2. To evaluate..."
+        // These start with "N. " and are entirely bold (not italic), 12pt Garamond.
+        // They may end in a period and may carry a first-line indent — both allowed here.
+        // Guards:
+        //   - Length cap: real objectives are short labels, not full body paragraphs.
+        //   - No em-dash after the first word: "1. Observation—..." is a list item, not a heading.
+        if (preg_match('/^\d+\.\s+\S/u', $text) === 1
+            && mb_strlen($text) <= 300
+            && preg_match('/^\d+\.\s+\S+\s*[—–-]/u', $text) === 0
+            && !preg_match('/^(figure|fig\.?|table|chapter|appendix|continuation|legend)\b/iu', $text)
+            && !preg_match('/^\[\d+\]/u', $text)
+        ) {
+            $runs = $xpath->query('.//w:r', $p);
+            $boldTotal = 0; $sz12Total = 0; $runTotal = 0;
+            foreach ($runs as $run) {
+                if (!$run instanceof DOMElement) { continue; }
+                if ($xpath->query('.//w:drawing|.//w:pict|.//w:instrText|.//w:fldChar', $run)->length > 0) { continue; }
+                $tEl = $run->getElementsByTagNameNS(self::W_NS, 't')->item(0);
+                if (!$tEl instanceof DOMElement || trim($tEl->textContent ?? '') === '') { continue; }
+                $runTotal++;
+                $rPr   = $run->getElementsByTagNameNS(self::W_NS, 'rPr')->item(0);
+                $bold  = $rPr instanceof DOMElement && $rPr->getElementsByTagNameNS(self::W_NS, 'b')->length > 0;
+                $szEl  = $rPr instanceof DOMElement ? $rPr->getElementsByTagNameNS(self::W_NS, 'sz')->item(0) : null;
+                if ($bold) { $boldTotal++; }
+                if ($szEl instanceof DOMElement && $szEl->getAttributeNS(self::W_NS, 'val') === '24') { $sz12Total++; }
+            }
+            if ($runTotal > 0 && ($boldTotal / $runTotal) >= 0.6) { return true; }
+            if ($runTotal > 0 && ($sz12Total / $runTotal) >= 0.6) { return true; }
+            // Fallback: paragraph-mark declares 12pt
+            $pPrSz = $xpath->query('./w:pPr/w:rPr/w:sz', $p)->item(0);
+            if ($pPrSz instanceof DOMElement && $pPrSz->getAttributeNS(self::W_NS, 'val') === '24') { return true; }
         }
 
-        return ($textRunsBold / $textRunsTotal) >= 0.6;
+        // ── Shared gates for all other italic-heading patterns ────────────────
+        if (preg_match('/[.!?]$/u', $text) === 1) { return false; }
+        // NOTE: no first-line indent gate here — Ch2 theme headings are often
+        // stored with firstLine=720 because the author formatted them as body
+        // paragraphs. Gates 1 (punctuation) and 4 (length) are sufficient.
+        if (preg_match(
+            '/^(figure|fig\.?|table|chapter|appendix|continuation|legend)\b/iu', $text
+        ) === 1) { return false; }
+        if (preg_match('/^\[\d+\]/u', $text) === 1) { return false; }
+        if (mb_strlen($text) > 150) { return false; }
+
+        $runs = $xpath->query('.//w:r', $p);
+        if ($runs->length === 0) { return false; }
+
+        $textRunsTotal  = 0;
+        $boldItalicRuns = 0;
+        $sz12Runs       = 0;
+
+        foreach ($runs as $run) {
+            if (!$run instanceof DOMElement) { continue; }
+            if ($xpath->query(
+                './/w:drawing|.//w:pict|.//w:instrText|.//w:fldChar', $run
+            )->length > 0) { continue; }
+            $tEl = $run->getElementsByTagNameNS(self::W_NS, 't')->item(0);
+            if (!$tEl instanceof DOMElement || trim($tEl->textContent ?? '') === '') { continue; }
+
+            $textRunsTotal++;
+            $rPr       = $run->getElementsByTagNameNS(self::W_NS, 'rPr')->item(0);
+            $hasBold   = $rPr instanceof DOMElement
+                && $rPr->getElementsByTagNameNS(self::W_NS, 'b')->length > 0;
+            $hasItalic = $rPr instanceof DOMElement
+                && $rPr->getElementsByTagNameNS(self::W_NS, 'i')->length > 0;
+            $szEl      = $rPr instanceof DOMElement
+                ? $rPr->getElementsByTagNameNS(self::W_NS, 'sz')->item(0)
+                : null;
+
+            if ($hasBold && $hasItalic) { $boldItalicRuns++; }
+            if ($szEl instanceof DOMElement
+                && $szEl->getAttributeNS(self::W_NS, 'val') === '24'
+            ) { $sz12Runs++; }
+        }
+
+        if ($textRunsTotal === 0) { return false; }
+
+        // Pattern A: majority bold+italic (Ch2 inline headings)
+        if (($boldItalicRuns / $textRunsTotal) >= 0.6) { return true; }
+
+        // Pattern B: any bold+italic runs AND majority 12pt (Ch4/Ch5 manual headings)
+        if ($boldItalicRuns > 0 && ($sz12Runs / $textRunsTotal) >= 0.6) { return true; }
+
+        // Pattern C: paragraph-mark declares 12pt AND at least one bold+italic run
+        $pPrSz = $xpath->query('./w:pPr/w:rPr/w:sz', $p)->item(0);
+        if ($pPrSz instanceof DOMElement
+            && $pPrSz->getAttributeNS(self::W_NS, 'val') === '24'
+            && $boldItalicRuns > 0
+        ) { return true; }
+
+        return false;
     }
 
     private function getPFirstLineIndent(DOMElement $p): int
@@ -1182,9 +1872,11 @@ class DocxFormatterService
     {
         $pPr = $this->getChild($p, 'pPr');
         if ($pPr instanceof DOMElement) {
-            $this->removeChildren($pPr, 'pStyle');
-            $this->removeChildren($pPr, 'rPr');
-            $this->removeChildren($pPr, 'widowControl');
+            foreach (['pStyle', 'rPr', 'widowControl', 'ind', 'spacing',
+                      'jc', 'pageBreakBefore', 'keepNext', 'keepLines',
+                      'numPr'] as $tag) {
+                $this->removeChildren($pPr, $tag);
+            }
         }
         foreach ($xpath->query('.//w:r', $p) as $run) {
             if (!$run instanceof DOMElement) { continue; }
@@ -1259,14 +1951,6 @@ class DocxFormatterService
     // Run writing
     // ═══════════════════════════════════════════════════════════════════
 
-    /**
-     * Write font/size/bold/italic to every text run.
-     *
-     * $bold / $italic:
-     *   true  — force ON
-     *   false — force OFF
-     *   null  — preserve each run's existing state
-     */
     private function writeRuns(
         DOMXPath $xpath,
         DOMElement $scope,
@@ -1305,7 +1989,6 @@ class DocxFormatterService
         foreach ($textRuns as $run) {
             if (!$run instanceof DOMElement) { continue; }
 
-            // Snapshot bold/italic BEFORE wiping rPr
             $existingRPr    = $run->getElementsByTagNameNS(self::W_NS, 'rPr')->item(0);
             $existingBold   = $existingRPr instanceof DOMElement
                 && $existingRPr->getElementsByTagNameNS(self::W_NS, 'b')->length > 0;
@@ -1444,112 +2127,27 @@ class DocxFormatterService
         }
     }
 
-    /**
-     * Table borders per spec:
-     *
-     * Table-level (tblBorders):
-     *   top    : double solid 0.5pt (sz=4)  — always
-     *   bottom : double solid 0.5pt (sz=4)  — always
-     *   left, right, insideH, insideV : none
-     *
-     * Per-cell (tcBorders) — only on header row and footer row:
-     *   Header row (row 1)  : single solid 0.5pt on the BOTTOM of each cell
-     *   Footer row (last row): single solid 0.5pt on the TOP of each cell
-     *   All other cells     : tcBorders wiped so the table-level borders win
-     *
-     * We wipe all tcBorders first, then re-add only what is needed so no
-     * stale single-line borders survive to override the double outer borders.
-     */
-    private function setTableBorders(DOMElement $tbl, DOMXPath $xpath): void
-    {
-        // ── Step 1: Wipe ALL existing tcBorders on every cell ────────
-        // tcBorders override tblBorders in Word. Any leftover single-line
-        // border on a top/bottom cell will beat our double outer border.
-        foreach ($xpath->query('.//w:tc', $tbl) as $tc) {
-            if (!$tc instanceof DOMElement) { continue; }
-            $tcPr = $this->getChild($tc, 'tcPr');
-            if ($tcPr instanceof DOMElement) {
-                $this->removeChildren($tcPr, 'tcBorders');
-            }
-        }
-
-        // ── Step 2: Rebuild tblBorders from scratch ───────────────────
-        $tblPr = $this->ensureChild($tbl, 'tblPr');
-        $this->removeChildren($tblPr, 'tblBorders');
-        $tblBorders = $tbl->ownerDocument->createElementNS(self::W_NS, 'w:tblBorders');
-        $tblPr->appendChild($tblBorders);
-
-        $makeBorder = function (string $localName, string $val, string $sz) use ($tbl, $tblBorders): void {
-            $el = $tbl->ownerDocument->createElementNS(self::W_NS, 'w:' . $localName);
-            $el->setAttributeNS(self::W_NS, 'w:val',   $val);
-            $el->setAttributeNS(self::W_NS, 'w:sz',    $sz);
-            $el->setAttributeNS(self::W_NS, 'w:space', '0');
-            $el->setAttributeNS(self::W_NS, 'w:color', '000000');
-            $tblBorders->appendChild($el);
-        };
-
-        $makeBorder('top',     'double', '4'); // double solid 0.5pt
-        $makeBorder('left',    'none',   '0');
-        $makeBorder('bottom',  'double', '4'); // double solid 0.5pt
-        $makeBorder('right',   'none',   '0');
-        $makeBorder('insideH', 'none',   '0'); // row separators via per-cell only
-        $makeBorder('insideV', 'none',   '0');
-
-        // ── Step 3: Per-cell borders on header and footer rows only ───
-        $rows     = $xpath->query('.//w:tr', $tbl);
-        $rowCount = $rows->length;
-        if ($rowCount === 0) { return; }
-
-        $wNs     = self::W_NS;
-        $makeCell = function (string $side, DOMElement $tc) use ($wNs): void {
-            // Get or create tcPr as first child of tc
-            $tcPr = null;
-            foreach ($tc->childNodes as $child) {
-                if ($child instanceof DOMElement
-                    && $child->localName === 'tcPr'
-                    && $child->namespaceURI === $wNs
-                ) { $tcPr = $child; break; }
-            }
-            if ($tcPr === null) {
-                $tcPr = $tc->ownerDocument->createElementNS($wNs, 'w:tcPr');
-                $tc->insertBefore($tcPr, $tc->firstChild);
-            }
-
-            // Fresh tcBorders — Step 1 already wiped any old one
-            $tcBdr = $tc->ownerDocument->createElementNS($wNs, 'w:tcBorders');
-            $tcPr->appendChild($tcBdr);
-
-            $el = $tc->ownerDocument->createElementNS($wNs, 'w:' . $side);
-            $el->setAttributeNS($wNs, 'w:val',   'single');
-            $el->setAttributeNS($wNs, 'w:sz',    '4');
-            $el->setAttributeNS($wNs, 'w:space', '0');
-            $el->setAttributeNS($wNs, 'w:color', '000000');
-            $tcBdr->appendChild($el);
-        };
-
-        // Header row (row 1): single 0.5pt on BOTTOM of each cell
-        $firstRow = $rows->item(0);
-        if ($firstRow instanceof DOMElement) {
-            foreach ($xpath->query('w:tc', $firstRow) as $tc) {
-                if (!$tc instanceof DOMElement) { continue; }
-                $makeCell('bottom', $tc);
-            }
-        }
-
-        // Footer row (last row): single 0.5pt on TOP of each cell
-        // Only when table has more than 1 row so header and footer are distinct
-        $lastRow = $rows->item($rowCount - 1);
-        if ($lastRow instanceof DOMElement && $rowCount > 1) {
-            foreach ($xpath->query('w:tc', $lastRow) as $tc) {
-                if (!$tc instanceof DOMElement) { continue; }
-                $makeCell('top', $tc);
-            }
-        }
-    }
-
     // ═══════════════════════════════════════════════════════════════════
     // XML DOM helpers
     // ═══════════════════════════════════════════════════════════════════
+
+    /**
+     * Remove every floating/positioned property from a table so Word
+     * renders it inline with the text flow.
+     */
+    private function deFloatTable(DOMElement $tbl): void
+    {
+        $tblPr = $this->getChild($tbl, 'tblPr');
+        if (!$tblPr instanceof DOMElement) { return; }
+        $this->removeChildren($tblPr, 'tblpPr');
+        $this->removeChildren($tblPr, 'positionH');
+        $this->removeChildren($tblPr, 'positionV');
+        $tblInd = $this->getChild($tblPr, 'tblInd');
+        if ($tblInd instanceof DOMElement) {
+            $tblInd->setAttributeNS(self::W_NS, 'w:w',    '0');
+            $tblInd->setAttributeNS(self::W_NS, 'w:type', 'dxa');
+        }
+    }
 
     /** @return array{0:DOMDocument,1:DOMXPath} */
     private function loadXml(string $xml): array

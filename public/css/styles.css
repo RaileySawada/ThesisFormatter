@@ -1,11 +1,18 @@
-*,
-*::before,
-*::after {
+/* Scoped transitions — only inside the app, never on modal backdrops */
+#formatter-app *,
+#formatter-app *::before,
+#formatter-app *::after {
   transition:
     background-color 0.25s ease,
     border-color 0.25s ease,
     color 0.15s ease,
     box-shadow 0.25s ease;
+}
+/* Backdrops sit outside #formatter-app, kill their transition entirely */
+#preview-backdrop,
+#mobile-modal-backdrop {
+  transition: none !important;
+  background-color: rgba(0, 0, 0, 0.65) !important;
 }
 @keyframes slideUp {
   from {
@@ -176,13 +183,16 @@
   box-shadow: 4px 8px 24px rgba(0, 0, 0, 0.13);
 }
 #formatter-app[data-theme="dark"] .file-card {
-  background: #1e293b;
-  border-color: #334155;
+  background: #1c2333;
+  border-color: #2d3748;
+  box-shadow:
+    0 8px 28px rgba(0, 0, 0, 0.45),
+    0 2px 8px rgba(0, 0, 0, 0.3);
 }
-#formatter-app[data-theme="dark"] .file-card span {
-  color: #94a3b8;
+#formatter-app[data-theme="dark"] .fc-label {
+  color: #64748b;
 }
-#formatter-app[data-theme="dark"] #fan-filename {
+#formatter-app[data-theme="dark"] .fc-filename {
   color: #e2e8f0;
 }
 input[type="checkbox"] {

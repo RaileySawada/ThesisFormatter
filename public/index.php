@@ -18,6 +18,8 @@ $request = strtok($request, '?');
 $page = str_replace('/', '', $request);
 $page = str_replace('_', ' ', $page);
 
+if(session_status() == PHP_SESSION_NONE) session_start();
+
 require HEADER;
 
 if(ENVIRONMENT == 'local' && DEBUG == true):

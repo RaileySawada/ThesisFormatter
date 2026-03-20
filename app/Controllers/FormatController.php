@@ -10,6 +10,10 @@ class FormatController
 {
     public function handleRequest(): void
     {
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+
         $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
         if ($method === 'POST' && ($_POST['action'] ?? '') === 'format') {
@@ -24,37 +28,32 @@ class FormatController
     {
         try {
             // ── Detect silent POST oversize failure ──────────────────
-            // When post_max_size is exceeded, $_POST and $_FILES are both
-            // empty and PHP emits the warning. We detect it here cleanly.
             if (
                 empty($_POST) &&
                 empty($_FILES) &&
                 isset($_SERVER['CONTENT_LENGTH']) &&
                 (int)$_SERVER['CONTENT_LENGTH'] > 0
             ) {
-                $maxBytes    = $this->parseBytes(ini_get('post_max_size') ?: '40M');
-                $sentBytes   = (int)$_SERVER['CONTENT_LENGTH'];
-                $maxReadable = $this->formatBytes($maxBytes);
+                $maxBytes     = $this->parseBytes(ini_get('post_max_size') ?: '40M');
+                $sentBytes    = (int)$_SERVER['CONTENT_LENGTH'];
+                $maxReadable  = $this->formatBytes($maxBytes);
                 $sentReadable = $this->formatBytes($sentBytes);
-
                 throw new RuntimeException(
                     "Your file is too large ({$sentReadable}). " .
-                    "The server currently accepts a maximum of {$maxReadable} per upload. " .
-                    "Please reduce the file size and try again."
+                    "The server currently accepts a maximum of {$maxReadable} per upload."
                 );
             }
 
+            // ── File validation ──────────────────────────────────────
             if (!isset($_FILES['manuscript'])) {
                 throw new RuntimeException('No manuscript file was uploaded.');
             }
 
             $file = $_FILES['manuscript'];
-
             if (!is_array($file)) {
                 throw new RuntimeException('Invalid file upload data.');
             }
 
-            // ── Handle per-file upload error codes ───────────────────
             $errorCode = $file['error'] ?? UPLOAD_ERR_NO_FILE;
             if ($errorCode !== UPLOAD_ERR_OK) {
                 throw new RuntimeException($this->uploadErrorMessage((int)$errorCode));
@@ -72,9 +71,19 @@ class FormatController
                 throw new RuntimeException('Only .docx files are supported.');
             }
 
-            $selectedSections = $this->collectSelections('sections', 'sections_m', [
-                'preliminary', 'chapters', 'appendices',
-            ]);
+            // ── Section validation ───────────────────────────────────
+            $selectedSections = $this->collectSelections('sections', 'sections_m', []);
+
+            if (empty($selectedSections)) {
+                throw new RuntimeException('Please select at least one section to format.');
+            }
+
+            $allowedSections  = ['preliminary', 'chapters', 'appendices'];
+            $selectedSections = array_values(array_intersect($selectedSections, $allowedSections));
+
+            if (empty($selectedSections)) {
+                throw new RuntimeException('No valid sections selected. Please choose from the available options.');
+            }
 
             $selectedRules = $this->collectSelections('rules', 'rules_m', [
                 'spacing', 'indentation', 'alignment', 'captions',
@@ -98,7 +107,10 @@ class FormatController
             $this->downloadFile($outputPath, $safeName . '_formatted.docx');
 
         } catch (\Throwable $e) {
-            $this->renderError($e->getMessage());
+            $_SESSION['error'] = $e->getMessage();
+            $self = strtok($_SERVER['REQUEST_URI'] ?? '/', '?');
+            header('Location: ' . $self);
+            exit;
         }
     }
 
@@ -133,7 +145,7 @@ class FormatController
         }
 
         $values = array_values(array_unique(array_filter(array_map(
-            static fn ($v) => is_scalar($v) ? trim((string)$v) : '',
+            static fn($v) => is_scalar($v) ? trim((string)$v) : '',
             $values
         ))));
 
@@ -157,6 +169,16 @@ class FormatController
             ob_end_clean();
         }
 
+        // Set a cookie JS can poll to detect download started → stop spinner + show success toast
+        // SameSite=Strict, not HttpOnly so JS can read it
+        setcookie('tf_download_ready', '1', [
+            'expires'  => time() + 60,
+            'path'     => '/',
+            'secure'   => isset($_SERVER['HTTPS']),
+            'httponly' => false,
+            'samesite' => 'Strict',
+        ]);
+
         header('Content-Description: File Transfer');
         header('Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document');
         header('Content-Disposition: attachment; filename="' . rawurlencode($downloadName) . '"');
@@ -179,53 +201,6 @@ class FormatController
         exit;
     }
 
-    private function renderError(string $message): void
-    {
-        http_response_code(422);
-        echo '<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Upload Error — Thesis Formatter</title>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: system-ui, sans-serif;
-      background: #f1f5f9;
-      display: flex; align-items: center; justify-content: center;
-      min-height: 100vh; padding: 24px;
-    }
-    .card {
-      background: #fff; border-radius: 16px;
-      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
-      padding: 40px 36px; max-width: 480px; width: 100%; text-align: center;
-    }
-    .icon { font-size: 48px; margin-bottom: 16px; }
-    h2 { font-size: 1.25rem; font-weight: 700; color: #0f172a; margin-bottom: 12px; }
-    p  { font-size: 0.9rem; color: #475569; line-height: 1.6; margin-bottom: 24px; }
-    a  {
-      display: inline-block; background: #2563eb; color: #fff;
-      padding: 10px 24px; border-radius: 10px; text-decoration: none;
-      font-size: 0.875rem; font-weight: 600;
-    }
-    a:hover { background: #1d4ed8; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="icon">⚠️</div>
-    <h2>Upload Failed</h2>
-    <p>' . htmlspecialchars($message, ENT_QUOTES, 'UTF-8') . '</p>
-    <a href="javascript:history.back()">← Go back</a>
-  </div>
-</body>
-</html>';
-    }
-
-    /**
-     * Parse shorthand like "200M", "2G", "512K" into bytes.
-     */
     private function parseBytes(string $val): int
     {
         $val  = trim($val);
@@ -240,9 +215,6 @@ class FormatController
         };
     }
 
-    /**
-     * Format bytes into a human-readable string.
-     */
     private function formatBytes(int $bytes): string
     {
         if ($bytes >= 1024 * 1024 * 1024) {
