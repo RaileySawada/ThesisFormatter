@@ -1,15 +1,13 @@
 <?php
-// Error toasts only — success is handled client-side via cookie polling
 if (!empty($_SESSION['error'])) {
-    $toastFile = defined('TOAST') ? TOAST : (__DIR__ . '/ToastMessage.php');
-    if (file_exists($toastFile)) require $toastFile;
+  $toastFile = defined('TOAST') ? TOAST : (__DIR__ . '/ToastMessage.php');
+  if (file_exists($toastFile)) require $toastFile;
 }
 ?>
 <section id="formatter-app" data-theme="light"
   class="relative min-h-screen overflow-x-hidden transition-colors duration-300"
   style="background: var(--bg-page);">
 
-  <!-- Ambient blobs -->
   <div class="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
     <div class="blob-blue   absolute -top-24 -left-16 h-80 w-80 rounded-full blur-3xl opacity-30" style="background:var(--blob-1)"></div>
     <div class="blob-indigo absolute top-1/3 -right-20 h-96 w-96 rounded-full blur-3xl opacity-25" style="background:var(--blob-2)"></div>
@@ -17,13 +15,9 @@ if (!empty($_SESSION['error'])) {
   </div>
 
   <div class="relative mx-auto max-w-7xl px-4 py-4 sm:px-6">
-
-    <!-- Mobile header -->
     <header class="mb-4 flex items-center justify-between lg:hidden">
       <div class="flex items-center gap-2">
-        <div class="flex h-8 w-8 items-center justify-center rounded-xl" style="background:var(--accent)">
-          <i class="fa-solid fa-graduation-cap text-xs text-white"></i>
-        </div>
+        <img src="<?= defined('LOGO') ? LOGO : '' ?>" alt="Thesis Formatter" class="h-8 w-8 object-contain rounded-xl">
         <span class="text-[11px] font-bold uppercase tracking-[0.2em]" style="color:var(--accent)">Thesis Formatter</span>
       </div>
       <div class="flex items-center gap-2">
@@ -44,15 +38,12 @@ if (!empty($_SESSION['error'])) {
     <form action="" method="POST" enctype="multipart/form-data" id="main-form"
           class="flex w-full gap-6 items-start">
 
-      <!-- ── Sidebar ── -->
-      <aside class="sticky top-6 hidden lg:flex lg:flex-col w-full max-w-[290px] shrink-0 rounded-3xl border p-5 gap-4 transition-colors duration-300"
-             style="background:var(--surface);border-color:var(--border);box-shadow:var(--shadow)">
+      
+      <aside class="sticky top-0 hidden lg:flex lg:flex-col w-full max-w-[280px] shrink-0 self-start" id="main-sidebar">
 
-        <!-- Brand -->
+        
         <div class="flex items-center gap-3 pb-1">
-          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl" style="background:var(--accent)">
-            <i class="fa-solid fa-graduation-cap text-sm text-white"></i>
-          </div>
+          <img src="<?= defined('LOGO') ? LOGO : '' ?>" alt="Thesis Formatter" class="h-10 w-10 object-contain shrink-0">
           <div>
             <p class="text-[10px] font-bold uppercase tracking-[0.22em]" style="color:var(--accent)">Thesis</p>
             <p class="text-sm font-bold leading-none" style="color:var(--text-primary)">Formatter</p>
@@ -61,7 +52,7 @@ if (!empty($_SESSION['error'])) {
 
         <div class="h-px" style="background:var(--border)"></div>
 
-        <!-- Appearance -->
+        
         <div class="rounded-2xl border px-4 py-3 transition-colors" style="background:var(--surface-raised);border-color:var(--border)">
           <p class="mb-2.5 text-[10px] font-bold uppercase tracking-[0.18em]" style="color:var(--text-muted)">
             <i class="fa-solid fa-palette mr-1"></i> Appearance
@@ -77,14 +68,14 @@ if (!empty($_SESSION['error'])) {
           </div>
         </div>
 
-        <!-- Sections -->
+        
         <div>
           <p class="mb-2.5 text-[10px] font-bold uppercase tracking-[0.18em]" style="color:var(--text-muted)">
             <i class="fa-solid fa-layer-group mr-1"></i> Main Sections
           </p>
           <div class="space-y-2" id="desktop-section-cards">
 
-            <!-- Preliminary — soon -->
+            
             <div class="section-card section-card--disabled relative flex items-start gap-3 rounded-2xl border px-4 py-3 cursor-not-allowed select-none"
                  data-value="preliminary" title="Coming soon"
                  style="border-color:var(--border);opacity:.45">
@@ -99,7 +90,7 @@ if (!empty($_SESSION['error'])) {
               <span class="mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide" style="background:var(--surface-raised);color:var(--text-muted)">Soon</span>
             </div>
 
-            <!-- Chapters — selected -->
+            
             <div class="section-card section-card--selected relative flex cursor-pointer items-start gap-3 rounded-2xl px-4 py-3 transition-all"
                  data-value="chapters"
                  style="border:2px solid var(--accent);background:var(--accent-subtle)">
@@ -116,7 +107,7 @@ if (!empty($_SESSION['error'])) {
               </span>
             </div>
 
-            <!-- Appendices — soon -->
+            
             <div class="section-card section-card--disabled relative flex items-start gap-3 rounded-2xl border px-4 py-3 cursor-not-allowed select-none"
                  data-value="appendices" title="Coming soon"
                  style="border-color:var(--border);opacity:.45">
@@ -134,7 +125,7 @@ if (!empty($_SESSION['error'])) {
           </div>
         </div>
 
-        <!-- Advanced Rules -->
+        
         <div>
           <button type="button" id="desktop-rules-toggle"
             class="w-full flex items-center justify-between rounded-xl px-1 py-1.5 transition cursor-pointer">
@@ -160,7 +151,7 @@ if (!empty($_SESSION['error'])) {
           </div>
         </div>
 
-        <!-- Developer credit -->
+        
         <div class="mt-auto pt-2 border-t" style="border-color:var(--border)">
           <p class="text-[10px] text-center" style="color:var(--text-muted)">
             Developed with <span style="color:#ef4444">anger</span> by
@@ -169,25 +160,25 @@ if (!empty($_SESSION['error'])) {
         </div>
       </aside>
 
-      <!-- ── Main content ── -->
+      
       <main class="min-w-0 flex-1 space-y-5">
 
-        <!-- Upload card -->
+        
         <div class="rounded-3xl border p-5 sm:p-7 transition-colors duration-300"
              style="background:var(--surface);border-color:var(--border);box-shadow:var(--shadow)">
 
-          <!-- Header row -->
+          
           <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <p class="text-[10px] font-bold uppercase tracking-[0.22em]" style="color:var(--accent)">
-                <i class="fa-solid fa-graduation-cap mr-1"></i> Thesis Formatter
+                <img src="<?= defined('LOGO') ? LOGO : '' ?>" alt="" class="inline-block h-4 w-4 object-contain mr-1 align-middle"> Thesis Formatter
               </p>
               <p class="mt-2 text-sm leading-7" style="color:var(--text-secondary)">
                 Upload your manuscript and apply formatting rules for chapters, references, figures, tables, and captions.
               </p>
             </div>
             <div class="flex shrink-0 gap-2">
-              <!-- Download template — single instance -->
+              
               <a href="<?= defined('BASE_URL') ? BASE_URL : '' ?>/public/template/manuscript_template.docx"
                  download
                  class="inline-flex items-center gap-1.5 rounded-2xl border px-4 py-2.5 text-xs font-semibold transition hover:opacity-80"
@@ -204,7 +195,7 @@ if (!empty($_SESSION['error'])) {
             </div>
           </div>
 
-          <!-- Drop zone -->
+          
           <div id="drop-zone" class="drop-zone mt-5 rounded-2xl border-2 border-dashed p-6 sm:p-8 transition-all"
                style="border-color:var(--accent-muted);background:var(--accent-subtle)">
             <div id="upload-prompt">
@@ -227,26 +218,28 @@ if (!empty($_SESSION['error'])) {
             <div id="file-uploaded-state" class="hidden">
               <div class="flex flex-col items-center gap-4">
                 <div class="file-cards-wrap">
-                  <!-- Card 1: back-left -->
-                  <div class="file-card fc-back-left">
-                    <div class="fc-icon-wrap" style="background:rgba(59,130,246,0.12)">
-                      <i class="fa-solid fa-file-word" style="color:#3b82f6;font-size:1.35rem"></i>
+                  <div class="file-card fc-p1">
+                    <div class="fc-lines">
+                      <div class="fc-line" style="width:70%"></div>
+                      <div class="fc-line" style="width:90%"></div>
+                      <div class="fc-line" style="width:55%"></div>
                     </div>
-                    <span class="fc-label">DOCX</span>
                   </div>
-                  <!-- Card 2: front-center -->
-                  <div class="file-card fc-front">
-                    <div class="fc-icon-wrap" style="background:rgba(99,102,241,0.12)">
-                      <i class="fa-solid fa-file-lines" style="color:#6366f1;font-size:1.35rem"></i>
+                  <div class="file-card fc-p2">
+                    <div class="fc-lines">
+                      <div class="fc-line" style="width:85%"></div>
+                      <div class="fc-line" style="width:60%"></div>
+                      <div class="fc-line" style="width:75%"></div>
+                      <div class="fc-line" style="width:40%"></div>
+                    </div>
+                  </div>
+                  <div class="file-card fc-p3">
+                    <i class="fa-solid fa-file-lines fc-doc-icon"></i>
+                    <div class="fc-lines" style="margin-top:6px">
+                      <div class="fc-line" style="width:80%"></div>
+                      <div class="fc-line" style="width:65%"></div>
                     </div>
                     <span id="fan-filename" class="fc-filename"></span>
-                  </div>
-                  <!-- Card 3: back-right -->
-                  <div class="file-card fc-back-right">
-                    <div class="fc-icon-wrap" style="background:rgba(16,185,129,0.12)">
-                      <i class="fa-solid fa-circle-check" style="color:#10b981;font-size:1.35rem"></i>
-                    </div>
-                    <span class="fc-label">READY</span>
                   </div>
                 </div>
                 <div class="text-center">
@@ -266,7 +259,7 @@ if (!empty($_SESSION['error'])) {
             </div>
           </div>
 
-          <!-- Badge + submit -->
+          
           <div class="mt-4 flex items-center gap-2">
             <span class="text-xs font-medium" style="color:var(--text-muted)">Formatting:</span>
             <span id="selected-section-badge" class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold" style="background:var(--accent-subtle-strong);color:var(--accent)">
@@ -290,10 +283,10 @@ if (!empty($_SESSION['error'])) {
           </div>
         </div>
 
-        <!-- Coverage + Status -->
+        
         <div class="grid gap-5 xl:grid-cols-2">
 
-          <!-- Coverage -->
+          
           <div class="rounded-3xl border p-6 transition-colors duration-300"
                style="background:var(--surface);border-color:var(--border);box-shadow:var(--shadow)">
             <h2 class="text-lg font-bold sm:text-xl" style="color:var(--text-primary)">
@@ -325,21 +318,21 @@ if (!empty($_SESSION['error'])) {
             </div>
           </div>
 
-          <!-- Status card — reactive live checklist -->
+          
           <div class="rounded-3xl p-6 text-white shadow-xl flex flex-col" style="background:var(--status-bg)">
             <p class="text-xs font-bold uppercase tracking-[0.2em]" style="color:var(--accent-light)">
               <i class="fa-solid fa-circle-info mr-1"></i> Current Status
             </p>
 
-            <!-- Dynamic headline -->
+            
             <h2 id="status-headline" class="mt-2 text-lg font-bold sm:text-xl">Ready for upload</h2>
             <p id="status-subtext" class="mt-1.5 text-sm leading-6" style="color:rgba(255,255,255,0.65)">
               Select sections on the left, then upload your manuscript.
             </p>
 
-            <!-- Progress steps -->
+            
             <div class="mt-5 space-y-2.5 flex-1">
-              <!-- Step 1: Section selected -->
+              
               <div id="step-section" class="status-step flex items-center gap-3 rounded-2xl px-4 py-3 transition-all duration-300" style="background:rgba(255,255,255,0.07)">
                 <span id="step-section-icon" class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background:rgba(255,255,255,0.15)">1</span>
                 <div class="flex-1 min-w-0">
@@ -348,7 +341,7 @@ if (!empty($_SESSION['error'])) {
                 </div>
               </div>
 
-              <!-- Step 2: File uploaded -->
+              
               <div id="step-file" class="status-step flex items-center gap-3 rounded-2xl px-4 py-3 transition-all duration-300" style="background:rgba(255,255,255,0.07)">
                 <span id="step-file-icon" class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background:rgba(255,255,255,0.15)">2</span>
                 <div class="flex-1 min-w-0">
@@ -357,7 +350,7 @@ if (!empty($_SESSION['error'])) {
                 </div>
               </div>
 
-              <!-- Step 3: Rules active -->
+              
               <div id="step-rules" class="status-step flex items-center gap-3 rounded-2xl px-4 py-3 transition-all duration-300" style="background:rgba(255,255,255,0.07)">
                 <span id="step-rules-icon" class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background:rgba(255,255,255,0.15)">3</span>
                 <div class="flex-1 min-w-0">
@@ -366,7 +359,7 @@ if (!empty($_SESSION['error'])) {
                 </div>
               </div>
 
-              <!-- Step 4: Ready to go -->
+              
               <div id="step-ready" class="status-step flex items-center gap-3 rounded-2xl px-4 py-3 transition-all duration-300" style="background:rgba(255,255,255,0.05);opacity:0.45">
                 <span id="step-ready-icon" class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background:rgba(255,255,255,0.1)">4</span>
                 <div class="flex-1 min-w-0">
@@ -378,7 +371,7 @@ if (!empty($_SESSION['error'])) {
           </div>
         </div>
 
-        <!-- Footer credit (mobile visible) -->
+        
         <p class="text-center text-[11px] pb-2 lg:hidden" style="color:var(--text-muted)">
           Developed with <span style="color:#ef4444">anger</span> by <strong style="color:var(--text-secondary)">Railey</strong> 😤
         </p>
@@ -388,12 +381,11 @@ if (!empty($_SESSION['error'])) {
   </div>
 </section>
 
-<!-- Mobile backdrop — bg-black/60 is set via class, NOT inline, so it stays opaque -->
-<div id="mobile-modal-backdrop" class="fixed inset-0 z-50 hidden" aria-hidden="true" style="background:rgba(0,0,0,0.6)"></div>
 
-<!-- Mobile sheet -->
+<div id="mobile-modal-backdrop" aria-hidden="true"></div>
+
+
 <div id="mobile-options-sheet" role="dialog" aria-modal="true"
-  class="fixed bottom-0 left-0 right-0 z-50 hidden rounded-t-[28px] shadow-2xl max-h-[92dvh] flex flex-col transition-colors duration-300"
   style="background:var(--surface)">
   <div class="px-5 pt-4 pb-2 shrink-0">
     <div class="mx-auto mb-3 h-1 w-10 rounded-full" style="background:var(--border)"></div>
@@ -493,22 +485,32 @@ if (!empty($_SESSION['error'])) {
   </div>
 </div>
 
-<!-- Preview modal — backdrop uses solid rgba style, not Tailwind class, to avoid hidden/flex conflict -->
-<div id="preview-backdrop" class="fixed inset-0 z-50 hidden items-end sm:items-center justify-center" aria-hidden="true" style="background:rgba(0,0,0,0.6)">
+
+<div id="preview-backdrop" aria-hidden="true">
   <div id="preview-modal"
-    class="modal-sheet w-full sm:max-w-lg rounded-t-[28px] sm:rounded-3xl shadow-2xl p-6 max-h-[80dvh] flex flex-col transition-colors duration-300"
     style="background:var(--surface)">
-    <div class="flex items-center justify-between mb-4 shrink-0">
-      <h2 class="text-lg font-bold" style="color:var(--text-primary)">
-        <i class="fa-solid fa-scroll mr-2" style="color:var(--accent)"></i>Template Rules
-      </h2>
-      <button id="close-preview-btn"
-        class="h-8 w-8 flex items-center justify-center rounded-full"
-        style="background:var(--surface-raised);color:var(--text-secondary)">
-        <i class="fa-solid fa-xmark text-sm"></i>
-      </button>
+
+    
+    <div class="px-5 pt-4 pb-2 shrink-0">
+      <div class="mx-auto mb-3 h-1 w-10 rounded-full" style="background:var(--border)"></div>
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-[10px] font-bold uppercase tracking-[0.2em]" style="color:var(--accent)">
+            <i class="fa-solid fa-scroll mr-1"></i> Template Rules
+          </p>
+          <h2 class="text-xl font-bold mt-0.5" style="color:var(--text-primary)">Formatting Guide</h2>
+        </div>
+        <button id="close-preview-btn"
+          class="flex h-8 w-8 items-center justify-center rounded-full transition"
+          style="background:var(--surface-raised);color:var(--text-secondary)">
+          <i class="fa-solid fa-xmark text-sm"></i>
+        </button>
+      </div>
+      <p class="mt-1 text-sm" style="color:var(--text-muted)">Rules applied to your manuscript.</p>
     </div>
-    <div class="flex-1 overflow-y-auto space-y-2.5 px-1 pb-1">
+
+    
+    <div class="flex-1 overflow-y-auto px-5 pb-4 space-y-2.5 mt-2">
       <?php
         $preview_rules = [
           ['fa-font',          'Font & Size',  'Garamond — 14pt titles, 13pt headings, 12pt body, 11pt references.'],
@@ -521,200 +523,25 @@ if (!empty($_SESSION['error'])) {
         ];
         foreach ($preview_rules as [$icon, $title, $desc]):
       ?>
-      <div class="rounded-2xl border p-4 transition-colors" style="background:var(--surface-raised);border-color:var(--border)">
-        <div class="flex items-center gap-2 mb-1">
-          <i class="fa-solid <?= $icon ?> text-sm w-4 text-center shrink-0" style="color:var(--accent)"></i>
+      <div class="rounded-2xl border p-4" style="background:var(--surface-raised);border-color:var(--border)">
+        <div class="flex items-center gap-2.5 mb-1">
+          <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl" style="background:var(--accent-subtle-strong)">
+            <i class="fa-solid <?= $icon ?> text-xs" style="color:var(--accent)"></i>
+          </span>
           <h3 class="text-sm font-semibold" style="color:var(--text-primary)"><?= $title ?></h3>
         </div>
-        <p class="text-xs pl-6" style="color:var(--text-muted)"><?= $desc ?></p>
+        <p class="text-xs mt-1 pl-[2.375rem]" style="color:var(--text-muted)"><?= $desc ?></p>
       </div>
       <?php endforeach; ?>
     </div>
+
+    
+    <div class="shrink-0 border-t px-5 py-4" style="border-color:var(--border);background:var(--surface)">
+      <button type="button" id="close-preview-footer-btn"
+        class="w-full rounded-2xl py-3.5 text-sm font-bold transition active:scale-[0.98]"
+        style="background:var(--surface-raised);color:var(--text-secondary)">
+        <i class="fa-solid fa-xmark mr-2"></i> Close
+      </button>
+    </div>
   </div>
 </div>
-
-<style>
-/* ── CSS variables — light & dark ── */
-#formatter-app, #formatter-app * { box-sizing: border-box; }
-
-#formatter-app[data-theme="light"] {
-  --bg-page:              #f0f4ff;
-  --surface:              #ffffff;
-  --surface-raised:       #f8faff;
-  --border:               #e2e8f4;
-  --accent:               #2563eb;
-  --accent-light:         #93c5fd;
-  --accent-muted:         #bfdbfe;
-  --accent-subtle:        #eff6ff;
-  --accent-subtle-strong: #dbeafe;
-  --accent-glow:          rgba(37,99,235,.25);
-  --text-primary:         #0f172a;
-  --text-secondary:       #475569;
-  --text-muted:           #94a3b8;
-  --status-bg:            #1e293b;
-  --shadow:               0 4px 24px rgba(15,23,42,.07);
-  --blob-1: #93c5fd; --blob-2: #a5b4fc; --blob-3: #7dd3fc;
-}
-
-#formatter-app[data-theme="dark"] {
-  --bg-page:              #0d1117;
-  --surface:              #161b22;
-  --surface-raised:       #1c2333;
-  --border:               #30363d;
-  --accent:               #3b82f6;
-  --accent-light:         #93c5fd;
-  --accent-muted:         #1e3a5f;
-  --accent-subtle:        #0f1e36;
-  --accent-subtle-strong: #172a4a;
-  --accent-glow:          rgba(59,130,246,.35);
-  --text-primary:         #e6edf3;
-  --text-secondary:       #8b949e;
-  --text-muted:           #484f58;
-  --status-bg:            #0d1117;
-  --shadow:               0 4px 32px rgba(0,0,0,.5);
-  --blob-1: #1d4ed8; --blob-2: #4f46e5; --blob-3: #0369a1;
-}
-
-/* ── Section cards ── */
-.section-card { transition: border-color .18s, background .18s, box-shadow .18s; }
-.section-card--selected { box-shadow: 0 0 0 3px var(--accent-glow); }
-.section-card:not(.section-card--disabled):not(.section-card--selected):hover {
-  border-color: var(--accent-muted) !important;
-  background: var(--accent-subtle) !important;
-}
-.section-card__check { transition: opacity .15s, transform .15s; }
-.section-card:not(.section-card--selected) .section-card__check { display: none; }
-
-/* ── Toggle ── */
-.toggle-track {
-  width: 44px; height: 24px; border-radius: 999px; cursor: pointer;
-  background: var(--border); position: relative; transition: background .2s;
-  flex-shrink: 0;
-}
-.toggle-track.on { background: var(--accent); }
-.toggle-thumb {
-  position: absolute; top: 3px; left: 3px;
-  width: 18px; height: 18px; border-radius: 50%;
-  background: #fff; transition: transform .2s, box-shadow .2s;
-  box-shadow: 0 1px 4px rgba(0,0,0,.2);
-}
-.toggle-track.on .toggle-thumb { transform: translateX(20px); }
-
-/* ── Rule dots ── */
-.rule-checkbox:not(:checked) ~ .rule-toggle-dot { background: var(--border) !important; }
-.rule-checkbox:not(:checked) ~ .rule-toggle-dot i { opacity: 0; }
-
-/* ── Accordions ── */
-.rules-body { overflow: hidden; transition: max-height .25s ease; max-height: 600px; }
-.rules-body.collapsed { max-height: 0; }
-.rules-chevron { transition: transform .25s; }
-.rules-chevron.rotated { transform: rotate(-180deg); }
-
-/* ── File cards — fan stack ── */
-.file-cards-wrap {
-  position: relative;
-  width: 220px;
-  height: 140px;
-  margin: 0 auto;
-  cursor: default;
-}
-.file-card {
-  position: absolute;
-  width: 116px;
-  height: 96px;
-  border-radius: 20px;
-  border: 1.5px solid var(--border);
-  background: var(--surface);
-  box-shadow: 0 8px 28px rgba(0,0,0,0.2), 0 2px 8px rgba(0,0,0,0.12);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  top: 50%;
-  left: 50%;
-  transform-origin: center 80%;
-  transition: transform 0.4s cubic-bezier(0.34,1.45,0.64,1), box-shadow 0.3s ease;
-  overflow: hidden;
-}
-/* Subtle top shine */
-.file-card::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 40%;
-  background: linear-gradient(to bottom, rgba(255,255,255,0.06), transparent);
-  border-radius: 20px 20px 0 0;
-  pointer-events: none;
-}
-/* Default fan positions */
-.fc-back-left  { transform: translate(-50%,-50%) rotate(-9deg) translateY(6px);  z-index: 1; }
-.fc-front      { transform: translate(-50%,-50%) rotate(0deg);                   z-index: 3; }
-.fc-back-right { transform: translate(-50%,-50%) rotate(9deg)  translateY(6px);  z-index: 2; }
-/* Hover fan-out */
-.file-cards-wrap:hover .fc-back-left {
-  transform: translate(-50%,-50%) rotate(-26deg) translateY(-8px) translateX(-36px);
-  box-shadow: -8px 14px 32px rgba(0,0,0,0.28);
-}
-.file-cards-wrap:hover .fc-front {
-  transform: translate(-50%,-50%) rotate(0deg) translateY(-18px);
-  box-shadow: 0 20px 40px rgba(0,0,0,0.3);
-  z-index: 4;
-}
-.file-cards-wrap:hover .fc-back-right {
-  transform: translate(-50%,-50%) rotate(26deg) translateY(-8px) translateX(36px);
-  box-shadow: 8px 14px 32px rgba(0,0,0,0.28);
-}
-/* Card inner elements */
-.fc-icon-wrap {
-  width: 40px; height: 40px;
-  border-radius: 12px;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
-}
-.fc-label {
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-.fc-filename {
-  font-size: 9px;
-  font-weight: 700;
-  text-align: center;
-  padding: 0 8px;
-  line-height: 1.3;
-  max-width: 100px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-primary);
-}
-
-/* ── Drop zone active ── */
-.drop-zone.dragover { border-color: var(--accent) !important; background: var(--accent-subtle) !important; }
-
-/* ── Modal backdrops ── */
-#preview-backdrop,
-#mobile-modal-backdrop {
-  background-color: rgba(0,0,0,0.65) !important;
-  transition: none !important;
-}
-#preview-backdrop.hidden,
-#mobile-modal-backdrop.hidden { display: none !important; }
-#preview-backdrop:not(.hidden) { display: flex; align-items: center; justify-content: center; }
-#mobile-modal-backdrop:not(.hidden) { display: block; }
-
-/* ── Modal animations ── */
-.modal-sheet { animation: slideUp .3s cubic-bezier(.22,1,.36,1); }
-.modal-sheet.closing { animation: slideDown .28s ease forwards; }
-@keyframes slideUp   { from { transform: translateY(60px); opacity:0 } to { transform: translateY(0); opacity:1 } }
-@keyframes slideDown { to   { transform: translateY(60px); opacity:0 } }
-
-/* ── Status steps ── */
-.status-step { transition: background 0.3s, opacity 0.3s; }
-.status-step--done { background: rgba(59,130,246,0.2) !important; }
-.status-step--active { background: rgba(255,255,255,0.12) !important; opacity: 1 !important; }
-.status-step--inactive { opacity: 0.4 !important; }
-</style>

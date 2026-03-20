@@ -1,113 +1,163 @@
 <?php if (isset($_SESSION['success'])): ?>
-<div class="toast-notification success fixed top-6 right-4 z-[100] w-[calc(100%-2rem)] sm:w-96">
-  <div class="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-50 to-green-50 shadow-2xl border border-emerald-200/50 backdrop-blur-sm">
-    <div class="absolute inset-0 bg-gradient-to-r from-emerald-400/10 to-green-400/10 pointer-events-none"></div>
-
-    <!-- Progress bar -->
-    <div class="absolute bottom-0 left-0 right-0 h-1 bg-emerald-200/30">
-      <div class="toast-progress h-full bg-gradient-to-r from-emerald-500 to-green-500 rounded-full"></div>
-    </div>
-
-    <div class="relative px-5 py-4 flex items-start gap-4">
-      <div class="relative flex-shrink-0">
-        <div class="absolute inset-0 bg-emerald-500/20 rounded-full blur-xl animate-pulse"></div>
-        <div class="relative w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-green-500 flex items-center justify-center shadow-lg">
-          <i class="fa-solid fa-check text-white text-lg"></i>
-        </div>
-      </div>
-
-      <div class="flex-1 pt-1 min-w-0">
-        <h4 class="font-semibold text-emerald-900 text-sm mb-0.5 select-none">Success</h4>
-        <p class="text-emerald-700 text-sm leading-relaxed select-none"><?= htmlspecialchars($_SESSION['success']) ?></p>
-      </div>
-
-      <button type="button" title="Close"
-              onclick="dismissToast(this.closest('.toast-notification'))"
-              class="flex-shrink-0 w-8 h-8 rounded-lg hover:bg-emerald-200/50 flex items-center justify-center transition-all duration-200 group cursor-pointer">
-        <i class="fa-solid fa-xmark text-emerald-600 group-hover:rotate-90 transition-transform duration-200"></i>
-      </button>
-    </div>
+<div class="tf-toast tf-toast--success" role="alert" aria-live="polite">
+  <div class="tf-toast-icon">
+    <i class="fa-solid fa-check"></i>
   </div>
+  <div class="tf-toast-body">
+    <p class="tf-toast-title">Success</p>
+    <p class="tf-toast-msg"><?= htmlspecialchars($_SESSION['success']) ?></p>
+  </div>
+  <button class="tf-toast-close" onclick="dismissToast(this.closest('.tf-toast'))" title="Close">
+    <i class="fa-solid fa-xmark"></i>
+  </button>
+  <div class="tf-toast-bar"></div>
 </div>
 <?php unset($_SESSION['success']); ?>
 
 <?php elseif (isset($_SESSION['error'])): ?>
-<div class="toast-notification error fixed top-6 right-4 z-[100] w-[calc(100%-2rem)] sm:w-96">
-  <div class="relative overflow-hidden rounded-2xl bg-gradient-to-br from-rose-50 to-red-50 shadow-2xl border border-rose-200/50 backdrop-blur-sm">
-    <div class="absolute inset-0 bg-gradient-to-r from-rose-400/10 to-red-400/10 pointer-events-none"></div>
-
-    <!-- Progress bar -->
-    <div class="absolute bottom-0 left-0 right-0 h-1 bg-rose-200/30">
-      <div class="toast-progress toast-progress--error h-full bg-gradient-to-r from-rose-500 to-red-500 rounded-full"></div>
-    </div>
-
-    <div class="relative px-5 py-4 flex items-start gap-4">
-      <div class="relative flex-shrink-0">
-        <div class="absolute inset-0 bg-rose-500/20 rounded-full blur-xl animate-pulse"></div>
-        <div class="relative w-10 h-10 rounded-full bg-gradient-to-br from-rose-400 to-red-500 flex items-center justify-center shadow-lg">
-          <i class="fa-solid fa-triangle-exclamation text-white text-lg"></i>
-        </div>
-      </div>
-
-      <div class="flex-1 pt-1 min-w-0">
-        <h4 class="font-semibold text-rose-900 text-sm mb-0.5 select-none">Error</h4>
-        <p class="text-rose-700 text-sm leading-relaxed select-none"><?= htmlspecialchars($_SESSION['error']) ?></p>
-      </div>
-
-      <button type="button" title="Close"
-              onclick="dismissToast(this.closest('.toast-notification'))"
-              class="flex-shrink-0 w-8 h-8 rounded-lg hover:bg-rose-200/50 flex items-center justify-center transition-all duration-200 group cursor-pointer">
-        <i class="fa-solid fa-xmark text-rose-600 group-hover:rotate-90 transition-transform duration-200"></i>
-      </button>
-    </div>
+<div class="tf-toast tf-toast--error" role="alert" aria-live="assertive">
+  <div class="tf-toast-icon">
+    <i class="fa-solid fa-triangle-exclamation"></i>
   </div>
+  <div class="tf-toast-body">
+    <p class="tf-toast-title">Error</p>
+    <p class="tf-toast-msg"><?= htmlspecialchars($_SESSION['error']) ?></p>
+  </div>
+  <button class="tf-toast-close" onclick="dismissToast(this.closest('.tf-toast'))" title="Close">
+    <i class="fa-solid fa-xmark"></i>
+  </button>
+  <div class="tf-toast-bar tf-toast-bar--error"></div>
 </div>
 <?php unset($_SESSION['error']); ?>
 <?php endif; ?>
 
 <style>
-@keyframes toast-slide-in {
-  from { transform: translateX(calc(100% + 1rem)); opacity: 0; }
-  to   { transform: translateX(0); opacity: 1; }
+.tf-toast {
+  position: fixed;
+  top: 24px;
+  right: 16px;
+  z-index: 100;
+  width: calc(100% - 2rem);
+  max-width: 384px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 14px 18px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
+  overflow: hidden;
+  animation: tf-slide-in 0.38s cubic-bezier(0.22,1,0.36,1) forwards;
 }
-@keyframes toast-slide-out {
-  from { transform: translateX(0); opacity: 1; }
-  to   { transform: translateX(calc(100% + 1rem)); opacity: 0; }
+body[data-theme="dark"] .tf-toast {
+  box-shadow: 0 8px 32px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.3);
 }
-@keyframes toast-progress {
-  from { width: 100%; }
-  to   { width: 0%; }
+.tf-toast.hide {
+  animation: tf-slide-out 0.3s cubic-bezier(0.4,0,1,1) forwards;
 }
-
-.toast-notification {
-  animation: toast-slide-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+.tf-toast-icon {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
 }
-.toast-notification.hide {
-  animation: toast-slide-out 0.35s cubic-bezier(0.4, 0, 1, 1) forwards;
+.tf-toast--success .tf-toast-icon {
+  background: rgba(16,185,129,0.12);
+  color: #10b981;
 }
-.toast-progress {
-  animation: toast-progress 5s linear forwards;
+body[data-theme="dark"] .tf-toast--success .tf-toast-icon {
+  background: rgba(16,185,129,0.15);
+  color: #34d399;
 }
-.toast-progress--error {
+.tf-toast--error .tf-toast-icon {
+  background: rgba(239,68,68,0.1);
+  color: #ef4444;
+}
+body[data-theme="dark"] .tf-toast--error .tf-toast-icon {
+  background: rgba(239,68,68,0.15);
+  color: #f87171;
+}
+.tf-toast-body {
+  flex: 1;
+  min-width: 0;
+  padding-top: 2px;
+}
+.tf-toast-title {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1;
+  margin: 0 0 4px 0;
+  color: var(--text-primary);
+}
+.tf-toast-msg {
+  font-size: 0.8rem;
+  line-height: 1.5;
+  margin: 0;
+  color: var(--text-secondary);
+}
+.tf-toast-close {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: background 0.18s, color 0.18s;
+  margin-top: 1px;
+}
+.tf-toast-close:hover {
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+}
+.tf-toast-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  border-radius: 0 2px 2px 0;
+  background: #10b981;
+  animation: tf-progress 5s linear forwards;
+}
+.tf-toast-bar--error {
+  background: #ef4444;
   animation-duration: 7s;
 }
+body[data-theme="dark"] .tf-toast-bar        { background: #34d399; }
+body[data-theme="dark"] .tf-toast-bar--error { background: #f87171; }
+
+.tf-toast--success { border-color: rgba(16,185,129,0.3); }
+.tf-toast--error   { border-color: rgba(239,68,68,0.25); }
+body[data-theme="dark"] .tf-toast--success { border-color: rgba(52,211,153,0.2); }
+body[data-theme="dark"] .tf-toast--error   { border-color: rgba(248,113,113,0.2); }
+
+@keyframes tf-slide-in  { from { transform: translateX(calc(100% + 1rem)); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes tf-slide-out { from { transform: translateX(0); opacity: 1; } to { transform: translateX(calc(100% + 1rem)); opacity: 0; } }
+@keyframes tf-progress  { from { width: 100%; } to { width: 0%; } }
 </style>
 
 <script>
-// Global so inline onclick="dismissToast(...)" always resolves
 window.dismissToast = function (el) {
   if (!el) return;
   el.classList.add('hide');
-  setTimeout(() => el.remove(), 350);
+  setTimeout(() => el.remove(), 320);
 };
-
-// Auto-dismiss on DOMContentLoaded in case script runs before elements exist
 (function () {
   function autoDismiss() {
-    const success = document.querySelector('.toast-notification.success');
-    if (success) setTimeout(() => window.dismissToast(success), 4700);
-    const error = document.querySelector('.toast-notification.error');
-    if (error) setTimeout(() => window.dismissToast(error), 7000);
+    const s = document.querySelector('.tf-toast.tf-toast--success');
+    if (s) setTimeout(() => window.dismissToast(s), 4700);
+    const e = document.querySelector('.tf-toast.tf-toast--error');
+    if (e) setTimeout(() => window.dismissToast(e), 7000);
   }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', autoDismiss);

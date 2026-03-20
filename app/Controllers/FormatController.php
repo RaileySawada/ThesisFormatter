@@ -27,7 +27,7 @@ class FormatController
     private function startFormatting(): void
     {
         try {
-            // ── Detect silent POST oversize failure ──────────────────
+            
             if (
                 empty($_POST) &&
                 empty($_FILES) &&
@@ -44,7 +44,7 @@ class FormatController
                 );
             }
 
-            // ── File validation ──────────────────────────────────────
+            
             if (!isset($_FILES['manuscript'])) {
                 throw new RuntimeException('No manuscript file was uploaded.');
             }
@@ -71,7 +71,7 @@ class FormatController
                 throw new RuntimeException('Only .docx files are supported.');
             }
 
-            // ── Section validation ───────────────────────────────────
+            
             $selectedSections = $this->collectSelections('sections', 'sections_m', []);
 
             if (empty($selectedSections)) {
@@ -114,7 +114,7 @@ class FormatController
         }
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────
+    
 
     private function uploadErrorMessage(int $code): string
     {
@@ -169,8 +169,8 @@ class FormatController
             ob_end_clean();
         }
 
-        // Set a cookie JS can poll to detect download started → stop spinner + show success toast
-        // SameSite=Strict, not HttpOnly so JS can read it
+        
+        
         setcookie('tf_download_ready', '1', [
             'expires'  => time() + 60,
             'path'     => '/',

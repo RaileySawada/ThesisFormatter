@@ -12,6 +12,20 @@
     isDark = dark;
     app?.setAttribute("data-theme", dark ? "dark" : "light");
     document.body.setAttribute("data-theme", dark ? "dark" : "light");
+    document.documentElement.setAttribute(
+      "data-theme",
+      dark ? "dark" : "light",
+    );
+    document.documentElement.style.setProperty(
+      "--sb-thumb",
+      dark ? "#4a5568" : "#a0aec0",
+    );
+    document.documentElement.style.setProperty(
+      "--sb-thumb-hover",
+      dark ? "#718096" : "#718096",
+    );
+    document.documentElement.style.background = dark ? "#0d1117" : "#f0f4ff";
+    document.body.style.background = dark ? "#0d1117" : "#f0f4ff";
     localStorage.setItem("thesis_theme", dark ? "dark" : "light");
     desktopToggle?.classList.toggle("on", dark);
     desktopToggle?.setAttribute("aria-checked", String(dark));
@@ -146,18 +160,19 @@
   const applyClose = document.getElementById("apply-and-close");
   const openBtn = document.getElementById("open-options-btn");
   function openSheet() {
-    backdrop?.classList.remove("hidden");
-    sheet?.classList.remove("hidden", "closing");
+    sheet?.classList.remove("closing");
+    sheet?.classList.add("is-open");
+    backdrop?.setAttribute("data-open", "");
     document.body.style.overflow = "hidden";
   }
   function closeSheet() {
     sheet?.classList.add("closing");
+    sheet?.classList.remove("is-open");
     setTimeout(() => {
-      sheet?.classList.add("hidden");
       sheet?.classList.remove("closing");
-      backdrop?.classList.add("hidden");
+      backdrop?.removeAttribute("data-open");
       document.body.style.overflow = "";
-    }, 280);
+    }, 320);
   }
   openBtn?.addEventListener("click", openSheet);
   closeSheetBtn?.addEventListener("click", closeSheet);
@@ -175,19 +190,22 @@
   const prevModal = document.getElementById("preview-modal");
   const openPrev = document.getElementById("open-preview-btn");
   const closePrev = document.getElementById("close-preview-btn");
+  const closePrevFooter = document.getElementById("close-preview-footer-btn");
   openPrev?.addEventListener("click", () => {
-    prevBackdrop?.classList.remove("hidden");
+    prevModal?.classList.remove("closing");
+    prevBackdrop?.setAttribute("data-open", "");
     document.body.style.overflow = "hidden";
   });
   function closePreview() {
     prevModal?.classList.add("closing");
     setTimeout(() => {
-      prevBackdrop?.classList.add("hidden");
       prevModal?.classList.remove("closing");
+      prevBackdrop?.removeAttribute("data-open");
       document.body.style.overflow = "";
-    }, 280);
+    }, 340);
   }
   closePrev?.addEventListener("click", closePreview);
+  closePrevFooter?.addEventListener("click", closePreview);
   prevBackdrop?.addEventListener("click", (e) => {
     if (e.target === prevBackdrop) closePreview();
   });
@@ -209,6 +227,34 @@
     }
     updateStatusPanel();
     updateApplyBtn();
+    const wrap = document.querySelector(".file-cards-wrap");
+    if (wrap) {
+      wrap.classList.remove("dealt");
+      void wrap.offsetWidth;
+      wrap.classList.add("dealt");
+      const cards = wrap.querySelectorAll(".file-card");
+      const longest = 0.18 + 0.45;
+      setTimeout(
+        () => {
+          const transforms = {
+            "fc-p1":
+              "translate(-50%,-50%) rotate(-6deg) translateX(-18px) translateY(6px)",
+            "fc-p2":
+              "translate(-50%,-50%) rotate(4deg) translateX(14px) translateY(10px)",
+            "fc-p3": "translate(-50%,-50%) rotate(-1deg) translateY(0px)",
+          };
+          cards.forEach((c) => {
+            const cls = ["fc-p1", "fc-p2", "fc-p3"].find((k) =>
+              c.classList.contains(k),
+            );
+            if (cls) c.style.transform = transforms[cls];
+            c.style.animation = "none";
+          });
+          wrap.classList.remove("dealt");
+        },
+        (longest + 0.05) * 1000,
+      );
+    }
   }
   document.querySelectorAll("#manuscript").forEach((input) => {
     input.addEventListener("change", () => {
@@ -446,47 +492,22 @@
     updateApplyBtn();
   }
   function showSuccessToast(msg) {
-    document.querySelectorAll(".toast-notification").forEach((t) => t.remove());
+    document.querySelectorAll(".tf-toast").forEach((t) => t.remove());
     const toast = document.createElement("div");
-    toast.className =
-      "toast-notification success fixed top-6 right-4 z-[100] w-[calc(100%-2rem)] sm:w-96";
+    toast.className = "tf-toast tf-toast--success";
+    toast.setAttribute("role", "alert");
     toast.innerHTML = `
-      <div class="relative overflow-hidden rounded-2xl shadow-2xl border" style="background:#f0fdf4;border-color:#bbf7d0">
-        <div class="absolute bottom-0 left-0 right-0 h-1" style="background:#d1fae5">
-          <div class="toast-progress h-full rounded-full" style="background:linear-gradient(to right,#10b981,#34d399)"></div>
-        </div>
-        <div class="relative px-5 py-4 flex items-start gap-4">
-          <div class="relative flex-shrink-0">
-            <div class="w-10 h-10 rounded-full flex items-center justify-center shadow-lg" style="background:linear-gradient(135deg,#34d399,#10b981)">
-              <i class="fa-solid fa-check text-white text-lg"></i>
-            </div>
-          </div>
-          <div class="flex-1 pt-1 min-w-0">
-            <h4 class="font-semibold text-sm mb-0.5 select-none" style="color:#064e3b">Success</h4>
-            <p class="text-sm leading-relaxed select-none" style="color:#065f46">${msg}</p>
-          </div>
-          <button type="button" onclick="this.closest('.toast-notification').classList.add('hide');setTimeout(()=>this.closest('.toast-notification')?.remove(),350)"
-                  class="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 group cursor-pointer"
-                  style="hover:background:#d1fae5">
-            <i class="fa-solid fa-xmark group-hover:rotate-90 transition-transform duration-200" style="color:#059669"></i>
-          </button>
-        </div>
-      </div>`;
+      <div class="tf-toast-icon"><i class="fa-solid fa-check"></i></div>
+      <div class="tf-toast-body">
+        <p class="tf-toast-title">Success</p>
+        <p class="tf-toast-msg">${msg}</p>
+      </div>
+      <button class="tf-toast-close" onclick="dismissToast(this.closest('.tf-toast'))" title="Close">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+      <div class="tf-toast-bar"></div>`;
     document.body.appendChild(toast);
-    if (!document.getElementById("tf-toast-style")) {
-      const s = document.createElement("style");
-      s.id = "tf-toast-style";
-      s.textContent = `
-        @keyframes toast-slide-in{from{transform:translateX(calc(100% + 1rem));opacity:0}to{transform:translateX(0);opacity:1}}
-        @keyframes toast-slide-out{from{transform:translateX(0);opacity:1}to{transform:translateX(calc(100% + 1rem));opacity:0}}
-        @keyframes toast-progress{from{width:100%}to{width:0%}}
-        .toast-notification{animation:toast-slide-in .4s cubic-bezier(.16,1,.3,1) forwards}
-        .toast-notification.hide{animation:toast-slide-out .35s cubic-bezier(.4,0,1,1) forwards}
-        .toast-progress{animation:toast-progress 5s linear forwards}`;
-      document.head.appendChild(s);
-    }
-    setTimeout(() => toast.classList.add("hide"), 4700);
-    setTimeout(() => toast.remove(), 5100);
+    setTimeout(() => window.dismissToast(toast), 4700);
   }
   function startDownloadPoller() {
     eraseCookie("tf_download_ready");
